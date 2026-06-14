@@ -1,0 +1,6 @@
+name: voxelith
+type: desktop
+stack: custom
+start: start.sh
+stop: stop.sh
+logs: logs/

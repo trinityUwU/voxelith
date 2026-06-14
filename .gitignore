@@ -1,0 +1,4 @@
+/target
+**/*.rs.bk
+/logs/*.log
+.DS_Store

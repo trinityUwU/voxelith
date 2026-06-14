@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Render Pipeline v1 — Voxel Engine</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-0:#0c0d10;
+    --bg-1:#121419;
+    --bg-2:#171a21;
+    --bg-3:#1d212b;
+    --bg-4:#232731;
+    --line:#2a2f3a;
+    --line-soft:#21252e;
+    --ink:#e7eaf0;
+    --ink-dim:#9aa3b2;
+    --ink-faint:#5f6675;
+    --green:#00d88a;
+    --red:#ff4d6a;
+    --blue:#4a9eff;
+    --amber:#f0a030;
+    --glow:0 0 32px rgba(0,216,138,.28);
+    --display:'Space Grotesk',sans-serif;
+    --body:'Hanken Grotesk',sans-serif;
+    --mono:'JetBrains Mono',monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    background:var(--bg-0);
+    color:var(--ink);
+    font-family:var(--body);
+    font-size:16px;
+    line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+    overflow-x:hidden;
+  }
+  ::selection{background:rgba(0,216,138,.22);color:#fff}
+
+  /* ---- layout shell ---- */
+  .wrap{max-width:1060px;margin:0 auto;padding:0 28px}
+  .topbar{
+    position:sticky;top:0;z-index:50;
+    backdrop-filter:blur(14px);
+    background:rgba(12,13,16,.72);
+    border-bottom:1px solid var(--line-soft);
+  }
+  .topbar .wrap{display:flex;align-items:center;justify-content:space-between;height:58px}
+  .brand{font-family:var(--mono);font-size:13px;letter-spacing:.04em;color:var(--ink-dim);display:flex;gap:10px;align-items:center}
+  .brand b{color:var(--ink);font-weight:700}
+  .brand .dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:var(--glow)}
+  .topnav{display:flex;gap:22px;font-family:var(--mono);font-size:12px;letter-spacing:.03em}
+  .topnav a{color:var(--ink-faint);text-decoration:none;transition:color .2s}
+  .topnav a:hover{color:var(--green)}
+  @media(max-width:720px){.topnav{display:none}}
+
+  .eyebrow{
+    font-family:var(--mono);font-size:12px;letter-spacing:.18em;text-transform:uppercase;
+    color:var(--green);display:inline-flex;align-items:center;gap:10px;
+  }
+  .eyebrow::before{content:"";width:24px;height:1px;background:var(--green);opacity:.7}
+
+  section{padding:96px 0;border-top:1px solid var(--line-soft)}
+  section:first-of-type{border-top:none}
+
+  h1,h2,h3{font-family:var(--display);font-weight:700;line-height:1.05;letter-spacing:-.02em}
+  h2{font-size:clamp(28px,4vw,42px);margin:18px 0 14px}
+  h3{font-size:20px;font-weight:600;letter-spacing:-.01em}
+  p{color:var(--ink-dim)}
+  .lead{font-size:18px;color:var(--ink-dim);max-width:62ch}
+  strong{color:var(--ink);font-weight:600}
+  code{font-family:var(--mono);font-size:.86em;background:var(--bg-2);border:1px solid var(--line-soft);padding:.1em .42em;border-radius:5px;color:var(--green)}
+  .kw{color:var(--blue)}
+  .kw-a{color:var(--amber)}
+  .kw-r{color:var(--red)}
+
+  /* ---- hero ---- */
+  .hero{padding:120px 0 100px;position:relative}
+  .hero h1{font-size:clamp(40px,7vw,80px);margin:24px 0 0;max-width:15ch}
+  .hero h1 em{font-style:normal;color:var(--green)}
+  .hero .lead{margin-top:26px;font-size:clamp(16px,2.2vw,21px)}
+  .hero-meta{
+    margin-top:54px;display:flex;flex-wrap:wrap;gap:0;
+    border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--bg-1);
+  }
+  .hero-meta .cell{flex:1;min-width:160px;padding:22px 24px;border-right:1px solid var(--line-soft)}
+  .hero-meta .cell:last-child{border-right:none}
+  .hero-meta .v{font-family:var(--display);font-size:30px;font-weight:700;color:var(--ink);letter-spacing:-.02em}
+  .hero-meta .v.hi{color:var(--green);text-shadow:var(--glow)}
+  .hero-meta .k{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-faint);margin-top:6px}
+  @media(max-width:620px){.hero-meta .cell{border-right:none;border-bottom:1px solid var(--line-soft)}}
+
+  /* ---- principle / two systems ---- */
+  .split{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:40px}
+  @media(max-width:760px){.split{grid-template-columns:1fr}}
+  .card{
+    background:var(--bg-1);border:1px solid var(--line);border-radius:14px;padding:28px;
+    position:relative;transition:border-color .25s,transform .25s;
+  }
+  .card:hover{border-color:#33414f}
+  .card .tag{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint)}
+  .card h3{margin:14px 0 10px}
+  .card p{font-size:15px}
+  .card.accent-g{border-top:2px solid var(--green)}
+  .card.accent-b{border-top:2px solid var(--blue)}
+
+  /* ---- pipeline flow ---- */
+  .flow{margin-top:44px;display:flex;flex-direction:column;gap:0}
+  .stage{
+    display:grid;grid-template-columns:54px 1fr;gap:20px;padding:22px 0;
+    border-bottom:1px solid var(--line-soft);align-items:start;
+  }
+  .stage:last-child{border-bottom:none}
+  .stage .idx{font-family:var(--mono);font-size:13px;color:var(--green);padding-top:3px}
+  .stage h3{font-size:17px;margin-bottom:6px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .stage p{font-size:14.5px}
+  .pill{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;padding:3px 9px;border-radius:20px;text-transform:uppercase;border:1px solid}
+  .pill.gpu{color:var(--green);border-color:rgba(0,216,138,.35);background:rgba(0,216,138,.06)}
+  .pill.cpu{color:var(--blue);border-color:rgba(74,158,255,.35);background:rgba(74,158,255,.06)}
+
+  /* ---- LOD ring signature ---- */
+  .lod-grid{display:grid;grid-template-columns:1.05fr 1fr;gap:48px;align-items:center;margin-top:44px}
+  @media(max-width:880px){.lod-grid{grid-template-columns:1fr;gap:36px}}
+  .ring-wrap{display:flex;justify-content:center}
+  .ring-wrap svg{width:100%;max-width:440px;height:auto}
+  .lod-legend{display:flex;flex-direction:column;gap:2px}
+  .lod-row{display:grid;grid-template-columns:64px 1fr;gap:16px;padding:14px 0;border-bottom:1px solid var(--line-soft);align-items:baseline}
+  .lod-row:last-child{border-bottom:none}
+  .lod-row .lvl{font-family:var(--mono);font-size:13px;font-weight:700}
+  .lod-row .desc{font-size:14px;color:var(--ink-dim)}
+  .lod-row .desc b{color:var(--ink)}
+  .swatch{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:8px;vertical-align:middle}
+
+  /* ---- technique blocks ---- */
+  .tech{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:40px}
+  @media(max-width:760px){.tech{grid-template-columns:1fr}}
+  .tblock{background:var(--bg-1);border:1px solid var(--line);border-radius:14px;padding:26px}
+  .tblock .h{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+  .tblock .h .ic{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;font-family:var(--mono);font-weight:700;font-size:14px}
+  .ic.g{background:rgba(0,216,138,.1);color:var(--green);border:1px solid rgba(0,216,138,.3)}
+  .ic.b{background:rgba(74,158,255,.1);color:var(--blue);border:1px solid rgba(74,158,255,.3)}
+  .ic.a{background:rgba(240,160,48,.1);color:var(--amber);border:1px solid rgba(240,160,48,.3)}
+  .tblock h3{font-size:16px}
+  .tblock p{font-size:14px;margin-top:4px}
+  .tblock ul{list-style:none;margin-top:14px;display:flex;flex-direction:column;gap:9px}
+  .tblock li{font-size:13.5px;color:var(--ink-dim);padding-left:18px;position:relative}
+  .tblock li::before{content:"";position:absolute;left:0;top:9px;width:6px;height:6px;border-radius:1px;background:var(--ink-faint)}
+  .tblock li.ok::before{background:var(--green)}
+  .tblock li.warn::before{background:var(--amber)}
+
+  /* ---- data structure ---- */
+  .schema{margin-top:40px;background:var(--bg-1);border:1px solid var(--line);border-radius:14px;padding:30px;font-family:var(--mono);font-size:13.5px;line-height:1.9;overflow-x:auto}
+  .schema .c{color:var(--ink-faint)}
+  .schema .t{color:var(--blue)}
+  .schema .f{color:var(--green)}
+  .schema .n{color:var(--amber)}
+
+  /* ---- phases ---- */
+  .phases{margin-top:44px;counter-reset:ph}
+  .phase{
+    display:grid;grid-template-columns:90px 1fr;gap:28px;padding:26px 0;
+    border-top:1px solid var(--line-soft);
+  }
+  .phase .num{font-family:var(--mono);font-size:13px;color:var(--ink-faint)}
+  .phase .num b{display:block;font-family:var(--display);font-size:34px;color:var(--ink);font-weight:700;line-height:1}
+  .phase .body h3{margin-bottom:8px}
+  .phase .body p{font-size:14.5px}
+  .phase .deliver{margin-top:12px;font-family:var(--mono);font-size:12px;color:var(--green);display:flex;align-items:center;gap:8px}
+  .phase .deliver::before{content:"→"}
+  @media(max-width:620px){.phase{grid-template-columns:60px 1fr;gap:18px}.phase .num b{font-size:26px}}
+
+  /* ---- refs ---- */
+  .refs{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:36px}
+  @media(max-width:680px){.refs{grid-template-columns:1fr}}
+  .ref{display:block;text-decoration:none;background:var(--bg-1);border:1px solid var(--line-soft);border-radius:11px;padding:18px 20px;transition:border-color .2s,transform .2s}
+  .ref:hover{border-color:var(--green);transform:translateY(-2px)}
+  .ref .src{font-family:var(--mono);font-size:11px;color:var(--green);letter-spacing:.04em}
+  .ref .ttl{font-size:14.5px;color:var(--ink);margin-top:6px;font-weight:600;line-height:1.3}
+  .ref:hover .ttl{color:var(--green)}
+  .ref .note{font-size:13px;color:var(--ink-dim);margin-top:5px}
+  .res-h{font-size:14px;font-family:var(--mono);font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint);margin:42px 0 16px;padding-bottom:10px;border-bottom:1px solid var(--line-soft)}
+  .res-h:first-of-type{margin-top:36px}
+
+  .callout{
+    margin-top:34px;border:1px solid rgba(240,160,48,.32);background:rgba(240,160,48,.05);
+    border-radius:12px;padding:22px 24px;
+  }
+  .callout .h{font-family:var(--mono);font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--amber);margin-bottom:8px}
+  .callout p{font-size:14.5px;color:var(--ink-dim)}
+
+  footer{padding:60px 0 80px;border-top:1px solid var(--line-soft);text-align:center}
+  footer .brand{justify-content:center;font-size:12px}
+  footer p{font-family:var(--mono);font-size:11px;color:var(--ink-faint);margin-top:14px;letter-spacing:.04em}
+
+  /* reveal */
+  .rv{opacity:0;transform:translateY(16px);transition:opacity .7s ease,transform .7s ease}
+  .rv.in{opacity:1;transform:none}
+  @media(prefers-reduced-motion:reduce){
+    html{scroll-behavior:auto}
+    .rv{opacity:1;transform:none;transition:none}
+    .ring-spin{animation:none!important}
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="wrap">
+    <div class="brand"><span class="dot"></span><b>VOXEL_ENGINE</b><span>/ render-pipeline</span></div>
+    <nav class="topnav">
+      <a href="#principe">principe</a>
+      <a href="#pipeline">pipeline</a>
+      <a href="#lod">lod</a>
+      <a href="#culling">culling</a>
+      <a href="#voxel">voxel</a>
+      <a href="#features">features</a>
+      <a href="#phases">phases</a>
+      <a href="#resources">ressources</a>
+    </nav>
+  </div>
+</div>
+
+<!-- HERO -->
+<header class="hero">
+  <div class="wrap">
+    <span class="eyebrow rv">Plan v1 · Rendu overworld · Rust + wgpu</span>
+    <h1 class="rv">Voir jusqu'à l'horizon, <em>sans jamais</em> rendre le vide.</h1>
+    <p class="lead rv">Pipeline de rendu GPU-driven pour render distance quasi-infinie. Trois leviers : un système de LOD par distance qui dégrade le détail sans laisser de trou, un culling à deux étages qui élimine ce que la caméra ne voit pas avant le moindre draw, et un streaming asynchrone qui sort tout calcul lourd du thread principal.</p>
+    <div class="hero-meta rv">
+      <div class="cell"><div class="v hi">≈512</div><div class="k">chunks visibles (cible)</div></div>
+      <div class="cell"><div class="v">5</div><div class="k">niveaux de LOD</div></div>
+      <div class="cell"><div class="v">2</div><div class="k">étages de culling</div></div>
+      <div class="cell"><div class="v">0</div><div class="k">draw sur main thread</div></div>
+    </div>
+  </div>
+</header>
+
+<!-- PRINCIPE -->
+<section id="principe">
+  <div class="wrap">
+    <span class="eyebrow rv">01 · Principe directeur</span>
+    <h2 class="rv">Deux systèmes de rendu découplés</h2>
+    <p class="lead rv">Le terrain statique et les structures dynamiques (contraptions type Create) n'ont pas les mêmes contraintes. Les fusionner est l'erreur architecturale qui plombe Minecraft Java. On les sépare dès la v1.</p>
+    <div class="split">
+      <div class="card accent-g rv">
+        <span class="tag">Système A</span>
+        <h3>Terrain statique</h3>
+        <p>Voxels en grille dense, meshé par chunk (greedy / binary meshing). Rendu en <strong>indirect draw GPU-driven</strong>. C'est le domaine du LOD et du culling — l'objet de ce document. Problème largement résolu par l'état de l'art ; l'enjeu est l'exécution propre.</p>
+      </div>
+      <div class="card accent-b rv">
+        <span class="tag">Système B</span>
+        <h3>Structures dynamiques</h3>
+        <p>Sorties du système de chunk. Chaque contraption = mini-monde voxel local avec sa propre transform GPU, rendu en instancing. Une plateforme de 500 blocs = <strong>une matrice</strong>, pas 500 objets. Hors scope de la v1 rendu — mentionné pour cadrer la frontière.</p>
+      </div>
+    </div>
+    <div class="callout rv">
+      <div class="h">Frontière de scope v1</div>
+      <p>Ce plan couvre uniquement le <strong>Système A</strong> : pipeline, LOD, culling, structures de données et streaming du terrain de l'overworld. Le système de contraptions et le kinetic network font l'objet d'un plan séparé. Aucun code du système B n'est touché ici.</p>
+    </div>
+  </div>
+</section>
+
+<!-- PIPELINE -->
+<section id="pipeline">
+  <div class="wrap">
+    <span class="eyebrow rv">02 · Pipeline GPU-driven</span>
+    <h2 class="rv">Le trajet d'une frame</h2>
+    <p class="lead rv">Le CPU ne construit plus la liste de draw. Il pousse l'état de la caméra et la liste candidate des chunks ; le GPU sélectionne, cull et dessine via <code>multi_draw_indirect</code>. Modèle validé par le framework Aokana (rendu voxel open-world, 2025).</p>
+    <div class="flow">
+      <div class="stage rv">
+        <div class="idx">00</div>
+        <div>
+          <h3>Sélection des chunks <span class="pill cpu">CPU</span></h3>
+          <p>Détermination de l'ensemble candidat autour du joueur selon la render distance et le niveau de LOD attendu par bande de distance. Upload des AABB et métadonnées de chunk dans un buffer GPU persistant.</p>
+        </div>
+      </div>
+      <div class="stage rv">
+        <div class="idx">01</div>
+        <div>
+          <h3>Frustum culling <span class="pill gpu">COMPUTE</span></h3>
+          <p>Compute shader : test AABB de chaque chunk candidat contre les 6 plans du frustum. Rejet immédiat de tout ce qui est hors champ de vision. Premier filtre, peu coûteux, élimine la majorité du monde.</p>
+        </div>
+      </div>
+      <div class="stage rv">
+        <div class="idx">02</div>
+        <div>
+          <h3>Occlusion culling Hi-Z <span class="pill gpu">COMPUTE</span></h3>
+          <p>Test des chunks survivants contre la pyramide Hi-Z de la frame précédente. Un chunk dont l'AABB est entièrement derrière la profondeur stockée est masqué — montagne devant, mur, terrain. C'est ce qui supprime le coût de « ce qui est caché derrière autre chose ».</p>
+        </div>
+      </div>
+      <div class="stage rv">
+        <div class="idx">03</div>
+        <div>
+          <h3>Compaction + indirect draw <span class="pill gpu">GPU</span></h3>
+          <p>Les chunks visibles sont compactés en un buffer d'arguments de draw indirect. Un seul <code>multi_draw_indirect</code> dessine tout le terrain visible, au bon LOD, sans round-trip CPU.</p>
+        </div>
+      </div>
+      <div class="stage rv">
+        <div class="idx">04</div>
+        <div>
+          <h3>Construction Hi-Z <span class="pill gpu">GPU</span></h3>
+          <p>Après le depth pass, génération de la mip-pyramide de profondeur (chaque texel = profondeur max de la zone 2×2 du niveau inférieur). Sert au culling de la frame suivante. Hérité de Greene et al., 1993 — la base de tout l'occlusion culling moderne.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- LOD -->
+<section id="lod">
+  <div class="wrap">
+    <span class="eyebrow rv">03 · Level of Detail</span>
+    <h2 class="rv">Dégrader le détail, jamais la silhouette</h2>
+    <p class="lead rv">Render distance quasi-infinie = ne jamais mesher en plein détail ce qui est loin. Le détail s'effondre par bandes concentriques autour du joueur. Le fog ferme l'horizon pour qu'aucun bord « vide » ne soit jamais visible.</p>
+
+    <div class="lod-grid">
+      <div class="ring-wrap rv">
+        <!-- Signature : anneaux de distance LOD vue de dessus + cône de frustum -->
+        <svg viewBox="0 0 440 440" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Anneaux de distance des niveaux de LOD autour du joueur">
+          <defs>
+            <radialGradient id="fog" cx="50%" cy="50%" r="50%">
+              <stop offset="60%" stop-color="#0c0d10" stop-opacity="0"/>
+              <stop offset="100%" stop-color="#0c0d10" stop-opacity="1"/>
+            </radialGradient>
+            <linearGradient id="frus" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#00d88a" stop-opacity="0"/>
+              <stop offset="100%" stop-color="#00d88a" stop-opacity=".14"/>
+            </linearGradient>
+          </defs>
+          <!-- bandes LOD -->
+          <circle cx="220" cy="220" r="205" fill="#171a21" stroke="#21252e"/>
+          <circle cx="220" cy="220" r="168" fill="#1a1e27" stroke="#262b35"/>
+          <circle cx="220" cy="220" r="128" fill="#1d2531" stroke="rgba(74,158,255,.25)"/>
+          <circle cx="220" cy="220" r="88"  fill="#1b2a2c" stroke="rgba(0,216,138,.28)"/>
+          <circle cx="220" cy="220" r="48"  fill="#16322a" stroke="rgba(0,216,138,.55)"/>
+          <!-- fog overlay -->
+          <circle cx="220" cy="220" r="205" fill="url(#fog)"/>
+          <!-- cône de frustum -->
+          <path d="M220 220 L70 8 L370 8 Z" fill="url(#frus)" stroke="rgba(0,216,138,.4)" stroke-width="1"/>
+          <!-- labels rayons -->
+          <g font-family="JetBrains Mono, monospace" font-size="11" fill="#9aa3b2">
+            <text x="226" y="200" fill="#00d88a">LOD0</text>
+            <text x="226" y="158" fill="#00d88a">LOD1</text>
+            <text x="226" y="118" fill="#4a9eff">LOD2</text>
+            <text x="226" y="78">LOD3</text>
+            <text x="226" y="40">LOD4</text>
+          </g>
+          <!-- joueur -->
+          <circle cx="220" cy="220" r="6" fill="#00d88a"/>
+          <circle cx="220" cy="220" r="13" fill="none" stroke="#00d88a" stroke-opacity=".5" class="ring-spin">
+            <animate attributeName="r" values="9;18;9" dur="3.2s" repeatCount="indefinite"/>
+            <animate attributeName="stroke-opacity" values=".6;0;.6" dur="3.2s" repeatCount="indefinite"/>
+          </circle>
+          <text x="220" y="240" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#5f6675">PLAYER</text>
+        </svg>
+      </div>
+
+      <div class="lod-legend rv">
+        <div class="lod-row">
+          <span class="lvl" style="color:var(--green)">LOD0</span>
+          <span class="desc"><b>Mesh complet.</b> Greedy/binary meshing, blocs 1:1, collision, édition, lumière par bloc. Zone d'interaction réelle.</span>
+        </div>
+        <div class="lod-row">
+          <span class="lvl" style="color:var(--green)">LOD1</span>
+          <span class="desc"><b>Mesh simplifié.</b> Agrégation 2³ → 1 bloc représentatif. Plus de collision fine, faces fusionnées agressivement.</span>
+        </div>
+        <div class="lod-row">
+          <span class="lvl" style="color:var(--blue)">LOD2</span>
+          <span class="desc"><b>Bloc moyen.</b> Agrégation 4³, couleur dominante par cellule. Silhouette du relief conservée, détail abandonné.</span>
+        </div>
+        <div class="lod-row">
+          <span class="lvl" style="color:var(--ink-dim)">LOD3</span>
+          <span class="desc"><b>Imposteur de chunk.</b> Heightmap colorisée, un quad par colonne. Le « fake chunk » à la Distant Horizons.</span>
+        </div>
+        <div class="lod-row">
+          <span class="lvl" style="color:var(--ink-faint)">LOD4</span>
+          <span class="desc"><b>Skybox de terrain.</b> Bande d'horizon procédurale fondue dans le fog. Jamais de bord net, jamais de vide.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="tech">
+      <div class="tblock rv">
+        <div class="h"><div class="ic g">≈</div><h3>Transitions sans crack</h3></div>
+        <p>Le risque du LOD : trous géométriques entre bandes de résolution différente.</p>
+        <ul>
+          <li class="ok">Terrain blocky → grille alignée : les LOD agrégés snappent sur une grille puissance-de-2, les bords coïncident par construction.</li>
+          <li class="ok"><b>Skirts</b> verticaux en bordure de chunk pour masquer tout pixel-gap résiduel.</li>
+          <li>Pour les bords smooth éventuels (biomes lissés) : geomorphing — morph progressif des vertices vers la position du LOD voisin.</li>
+        </ul>
+      </div>
+      <div class="tblock rv">
+        <div class="h"><div class="ic a">∴</div><h3>Masquer l'horizon</h3></div>
+        <p>« Jamais de vide visible » est d'abord un problème de fermeture d'horizon, pas de distance.</p>
+        <ul>
+          <li class="ok">Fog volumétrique horizontal + vertical, calé sur le rayon du dernier LOD chargé.</li>
+          <li class="ok">Le LOD4 se fond dans le fog : la transition monde→ciel n'a aucun bord net.</li>
+          <li class="warn">Budget : le fog masque le pop-in, mais le streaming doit alimenter les bandes avant qu'elles n'entrent dans le clair.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CULLING -->
+<section id="culling">
+  <div class="wrap">
+    <span class="eyebrow rv">04 · Culling à deux étages</span>
+    <h2 class="rv">Ne pas payer pour l'invisible</h2>
+    <p class="lead rv">Deux filtres en cascade, tous deux sur GPU. Le frustum élimine le hors-champ ; le Hi-Z élimine le caché. Ce qui survit est exactement ce que le joueur voit — rien de plus.</p>
+    <div class="tech">
+      <div class="tblock rv">
+        <div class="h"><div class="ic b">▱</div><h3>Frustum culling</h3></div>
+        <p>Filtre géométrique. Bon marché, exécuté en premier.</p>
+        <ul>
+          <li>AABB de chunk testée contre les 6 plans du view frustum.</li>
+          <li>Compute shader, un thread par chunk candidat, rejet en masse.</li>
+          <li class="ok">Élimine typiquement 60–80 % des chunks dans la render distance d'un coup.</li>
+        </ul>
+      </div>
+      <div class="tblock rv">
+        <div class="h"><div class="ic g">▤</div><h3>Occlusion Hi-Z</h3></div>
+        <p>Filtre de profondeur. Supprime ce qui est dans le champ mais caché.</p>
+        <ul>
+          <li>Pyramide Hi-Z : mip-map où chaque texel = profondeur max de la zone fine correspondante.</li>
+          <li>AABB projetée → comparée à la profondeur max de la tile couverte. Test conservateur, jamais de faux rejet.</li>
+          <li class="ok">Une grotte derrière une falaise, une vallée derrière une crête : non dessinées.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="callout rv">
+      <div class="h">Détail d'implémentation Aokana</div>
+      <p>Variante validée pour le voxel : projeter des rayons depuis des tiles écran (ex. 4×4 px), intersecter les AABB des chunks hors-caméra pour obtenir une profondeur conservative, et alimenter le Hi-Z par tile. Pertinent si on pousse vers un rendu hybride mesh + ray-marching sur les bandes lointaines en v2.</p>
+    </div>
+  </div>
+</section>
+
+<!-- DATA STRUCTURES -->
+<section id="data">
+  <div class="wrap">
+    <span class="eyebrow rv">05 · Structures de données</span>
+    <h2 class="rv">Le squelette mémoire</h2>
+    <p class="lead rv">Grille dense avec palette par sous-chunk (édition O(1), mémoire compacte) + octree de LOD comme index spatial des bandes de distance.</p>
+    <div class="schema rv">
+<span class="c">// hiérarchie monde — terrain statique overworld</span><br>
+<span class="t">World</span> {<br>
+&nbsp;&nbsp;<span class="f">chunks</span>: HashMap&lt;ChunkPos, <span class="t">Chunk</span>&gt;,&nbsp;&nbsp;<span class="c">// streaming async, clé = (cx, cz)</span><br>
+&nbsp;&nbsp;<span class="f">lod_octree</span>: <span class="t">Octree</span>&lt;LodNode&gt;,&nbsp;&nbsp;&nbsp;<span class="c">// index spatial → niveau de détail par bande</span><br>
+}<br><br>
+<span class="t">Chunk</span> {&nbsp;<span class="c">// colonne 16 × N × 16</span><br>
+&nbsp;&nbsp;<span class="f">subchunks</span>: [<span class="t">SubChunk</span>; <span class="n">24</span>],&nbsp;<span class="c">// 16³ chacun</span><br>
+&nbsp;&nbsp;<span class="f">mesh_state</span>: MeshState,&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="c">// Dirty | Building | Ready(lod)</span><br>
+&nbsp;&nbsp;<span class="f">aabb</span>: Aabb,&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="c">// uploadée GPU pour le culling</span><br>
+}<br><br>
+<span class="t">SubChunk</span> {&nbsp;<span class="c">// palette compression</span><br>
+&nbsp;&nbsp;<span class="f">palette</span>: Vec&lt;BlockState&gt;,&nbsp;&nbsp;&nbsp;<span class="c">// états distincts présents</span><br>
+&nbsp;&nbsp;<span class="f">indices</span>: BitPacked,&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="c">// bits/voxel = ceil(log2(palette.len()))</span><br>
+}
+    </div>
+  </div>
+</section>
+
+<!-- VOXEL ADAPTATION -->
+<section id="voxel">
+  <div class="wrap">
+    <span class="eyebrow rv">06 · Adaptation des voxels</span>
+    <h2 class="rv">Du bloc Minecraft au voxel moteur</h2>
+    <p class="lead rv">Un bloc Minecraft n'est pas un voxel cubique uniforme. C'est un <strong>block state</strong> : un identifiant + des propriétés (orientation, niveau d'eau, demi-dalle haute/basse…) qui décident d'un modèle. L'adaptation consiste à séparer la grille logique de la représentation de rendu.</p>
+    <div class="tech">
+      <div class="tblock rv">
+        <div class="h"><div class="ic g">▣</div><h3>Blocs pleins → grille dense</h3></div>
+        <p>La majorité de l'overworld (pierre, terre, minerais).</p>
+        <ul>
+          <li class="ok">Stockés en palette par sous-chunk : index O(1), faces fusionnées au meshing.</li>
+          <li class="ok">Bénéficient directement du LOD par agrégation et du greedy meshing.</li>
+          <li>Un <code>u16</code> de state suffit largement pour l'overworld vanilla.</li>
+        </ul>
+      </div>
+      <div class="tblock rv">
+        <div class="h"><div class="ic a">◪</div><h3>Blocs non-cubiques → modèles</h3></div>
+        <p>Escaliers, dalles, clôtures, portes, redstone, plantes.</p>
+        <ul>
+          <li class="warn">Échappent au greedy meshing : meshés depuis un set de modèles (comme les blockstate/model JSON vanilla).</li>
+          <li class="warn">Collision spécifique : forme dédiée par state, pas une AABB pleine.</li>
+          <li>Au LOD ≥ 2, ils s'effondrent vers leur bloc dominant — on ne mesh pas une clôture à 400 m.</li>
+        </ul>
+      </div>
+      <div class="tblock rv">
+        <div class="h"><div class="ic b">≈</div><h3>Fluides → couche séparée</h3></div>
+        <p>Eau, lave : niveau, écoulement, transparence.</p>
+        <ul>
+          <li>Pass de rendu transparent distinct, trié en profondeur.</li>
+          <li>Le niveau de fluide est une propriété de state, pas un bloc plein.</li>
+          <li class="ok">Surface animée gérée en shader, pas en re-meshing.</li>
+        </ul>
+      </div>
+      <div class="tblock rv">
+        <div class="h"><div class="ic g">☀</div><h3>Lumière → propagation par voxel</h3></div>
+        <p>Block light + sky light, le système qui colore tout l'overworld.</p>
+        <ul>
+          <li>Flood-fill par chunk, recalcul incrémental sur édition.</li>
+          <li class="ok">Hors main thread, sur le même thread pool que le meshing.</li>
+          <li>Aux LOD lointains : lumière approximée (sky light dominante) — invisible à distance.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="callout rv">
+      <div class="h">Principe d'adaptation</div>
+      <p>La <strong>grille logique</strong> (states + propriétés) est la source de vérité ; la <strong>représentation de rendu</strong> (mesh plein, modèle, fluide, imposteur LOD) en est dérivée. Cette séparation est ce qui permet à un même bloc d'exister en LOD0 détaillé et en LOD3 imposteur sans dupliquer la logique de jeu.</p>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES / DATA -->
+<section id="features">
+  <div class="wrap">
+    <span class="eyebrow rv">07 · Features &amp; données overworld</span>
+    <h2 class="rv">Ne pas ressaisir 1000 blocs à la main</h2>
+    <p class="lead rv">Tout le contenu de l'overworld — blocs, états, recettes, loot tables, propriétés de minage, biomes, lumière — existe déjà sous forme machine-readable. Deux sources, deux usages. On extrait, on ne recrée pas.</p>
+    <div class="tech">
+      <div class="tblock rv">
+        <div class="h"><div class="ic g">{ }</div><h3>Données de jeu — source machine</h3></div>
+        <p><strong>PrismarineJS/minecraft-data</strong> (MIT) : le dataset versionné de référence.</p>
+        <ul>
+          <li class="ok">blocks, items, recipes, biomes, blockCollisionShapes, materials, foods, effects — un JSON par catégorie, par version.</li>
+          <li class="ok">Licence MIT → exploitable dans un produit. <code>blockCollisionShapes</code> donne les formes de collision prêtes à parser.</li>
+          <li>Alternative : <strong>Articdive/ArticData</strong> (générateur Java, données block properties / fluids / map colors).</li>
+          <li>Source ultime : extraction directe du <code>.jar</code> vanilla → <code>data/minecraft/</code> (recipes, loot tables, worldgen) au format natif.</li>
+        </ul>
+      </div>
+      <div class="tblock rv">
+        <div class="h"><div class="ic b">¶</div><h3>Comportements — source humaine</h3></div>
+        <p><strong>minecraft.wiki</strong> : la référence encyclopédique des mécaniques.</p>
+        <ul>
+          <li>Worldgen, comportement des fluides, ticking, propagation de lumière : décrits en prose, pas en data.</li>
+          <li>Format de recette / blockstate documenté côté <strong>Fabric Wiki</strong>.</li>
+          <li class="warn">Licence CC BY-NC-SA → <span class="kw-a">non-commercial</span>. Lecture-référence OK ; scraper le contenu dans un produit commercial est hors licence.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="callout rv">
+      <div class="h">Périmètre features v1 — overworld</div>
+      <p>Pour la v1 on extrait uniquement : <strong>blocs pleins + states de l'overworld</strong>, formes de collision, recettes de craft de base, loot tables de blocs, settings de bruit worldgen. Pas de Nether/End, pas d'entités mobiles, pas d'enchantements — ajoutés par couches une fois le terrain et le rendu stabilisés.</p>
+    </div>
+  </div>
+</section>
+
+<!-- PHASES -->
+<section id="phases">
+  <div class="wrap">
+    <span class="eyebrow rv">08 · Roadmap d'implémentation</span>
+    <h2 class="rv">Phases v1 — séquence d'exécution</h2>
+    <p class="lead rv">Chaque phase est livrable et testable seule. On ne passe pas à la suivante sans la précédente verte. Ordre imposé : le culling n'a de sens qu'avec un terrain à dessiner, le LOD qu'avec un culling en place.</p>
+    <div class="phases">
+      <div class="phase rv">
+        <div class="num"><b>00</b>socle</div>
+        <div class="body">
+          <h3>Boucle wgpu + chunk meshing LOD0</h3>
+          <p>Setup wgpu (Vulkan/DX12/Metal), boucle de rendu, génération procédurale de terrain basique, greedy/binary meshing d'un seul niveau de détail. Rendu direct, sans culling. Objectif : poser une caméra dans un monde dessiné.</p>
+          <div class="deliver">Terrain explorable, FPS mesuré sans optimisation</div>
+        </div>
+      </div>
+      <div class="phase rv">
+        <div class="num"><b>01</b>indirect</div>
+        <div class="body">
+          <h3>Rendu GPU-driven + frustum culling</h3>
+          <p>Migration vers <code>multi_draw_indirect</code>. Upload des AABB de chunk. Compute shader de frustum culling, compaction du buffer de draw. Le CPU cesse de piloter la liste de draw.</p>
+          <div class="deliver">Render distance ×3 à FPS constant</div>
+        </div>
+      </div>
+      <div class="phase rv">
+        <div class="num"><b>02</b>occlusion</div>
+        <div class="body">
+          <h3>Occlusion culling Hi-Z</h3>
+          <p>Génération de la pyramide Hi-Z post depth-pass. Test d'occlusion des chunks survivants. Gestion du décalage d'une frame (Hi-Z de N−1 pour la frame N).</p>
+          <div class="deliver">Coût plat en intérieur/sous-terrain dense</div>
+        </div>
+      </div>
+      <div class="phase rv">
+        <div class="num"><b>03</b>lod</div>
+        <div class="body">
+          <h3>Système de LOD par bandes</h3>
+          <p>Octree de LOD, agrégation de blocs (2³, 4³), imposteurs de chunk (LOD3). Sélection du niveau par bande de distance. Meshing multi-résolution.</p>
+          <div class="deliver">Render distance ≈512 chunks jouable</div>
+        </div>
+      </div>
+      <div class="phase rv">
+        <div class="num"><b>04</b>horizon</div>
+        <div class="body">
+          <h3>Transitions seamless + fog</h3>
+          <p>Skirts de bordure, geomorphing si nécessaire, fog volumétrique calé sur le dernier LOD. Élimination de tout bord net et de tout pop-in visible.</p>
+          <div class="deliver">Aucun « vide » visible à aucune distance</div>
+        </div>
+      </div>
+      <div class="phase rv">
+        <div class="num"><b>05</b>stream</div>
+        <div class="body">
+          <h3>Streaming asynchrone</h3>
+          <p>Génération et meshing sur thread pool (<code>rayon</code>), jamais sur le main thread. Priorisation par distance et par direction du regard. Budget de meshing par frame pour lisser les pics.</p>
+          <div class="deliver">Déplacement rapide sans stutter</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- RESOURCES -->
+<section id="resources">
+  <div class="wrap">
+    <span class="eyebrow rv">09 · Ressources &amp; téléchargements directs</span>
+    <h2 class="rv">Tout est cliquable</h2>
+    <p class="lead rv">Sources techniques, données de jeu et textures — regroupées par usage, avec lien direct. Lis d'abord le bloc légal en bas : il conditionne ce que tu peux mettre dans un produit distribué.</p>
+
+    <h3 class="rv res-h">Moteur &amp; état de l'art rendu</h3>
+    <div class="refs">
+      <a class="ref rv" href="https://arxiv.org/abs/2505.02017" target="_blank" rel="noopener">
+        <div class="src">arXiv:2505.02017 · 2025</div>
+        <div class="ttl">Aokana — GPU-Driven Voxel Rendering Framework ↗</div>
+        <div class="note">SVDAG + sélection par rayons + occlusion Hi-Z par tile. La référence la plus alignée. Lecture prioritaire avant la phase 02.</div>
+      </a>
+      <a class="ref rv" href="https://github.com/B4rtekk1/Minerust" target="_blank" rel="noopener">
+        <div class="src">github · Minerust</div>
+        <div class="ttl">Voxel engine Rust + wgpu, 200+ FPS ↗</div>
+        <div class="note">Indirect rendering, compute culling, biomes procéduraux. Baseline à disséquer pour le socle phase 00–01.</div>
+      </a>
+      <a class="ref rv" href="https://nickmcd.me/2021/04/04/high-performance-voxel-engine/" target="_blank" rel="noopener">
+        <div class="src">nickmcd.me</div>
+        <div class="ttl">High-Performance Voxel Engine — Vertex Pooling ↗</div>
+        <div class="note">Pourquoi greedy/binary meshing bat instancing et geometry shaders. Base du meshing LOD0.</div>
+      </a>
+      <a class="ref rv" href="https://www.curseforge.com/minecraft/mc-mods/distant-horizons" target="_blank" rel="noopener">
+        <div class="src">CurseForge · Distant Horizons</div>
+        <div class="ttl">LOD mod — terrain simplifié jusqu'à 512 chunks ↗</div>
+        <div class="note">Preuve terrain du modèle « fake chunks » + fog. Inspiration directe des LOD3/LOD4.</div>
+      </a>
+      <a class="ref rv" href="http://transvoxel.org/" target="_blank" rel="noopener">
+        <div class="src">transvoxel.org · Lengyel</div>
+        <div class="ttl">Transvoxel — stitching de LOD ↗</div>
+        <div class="note">Cellules de transition entre résolutions. Surtout smooth voxel ; en blocky, snapping + skirts suffisent.</div>
+      </a>
+      <a class="ref rv" href="https://deepwiki.com/Creators-of-Create/Create" target="_blank" rel="noopener">
+        <div class="src">DeepWiki · Create</div>
+        <div class="ttl">Rendering Architecture — Flywheel / Virtual Worlds ↗</div>
+        <div class="note">Comment Create rend les contraptions en instancing GPU isolé. Référence pour le système B (v2).</div>
+      </a>
+    </div>
+
+    <h3 class="rv res-h">Données &amp; features (machine-readable)</h3>
+    <div class="refs">
+      <a class="ref rv" href="https://github.com/PrismarineJS/minecraft-data" target="_blank" rel="noopener">
+        <div class="src">github · PrismarineJS · MIT</div>
+        <div class="ttl">minecraft-data — blocks, items, recipes, biomes… ↗</div>
+        <div class="note">Le dataset versionné de référence. JSON par catégorie. Licence MIT → exploitable en produit.</div>
+      </a>
+      <a class="ref rv" href="https://github.com/PrismarineJS/minecraft-data/tree/master/data/pc" target="_blank" rel="noopener">
+        <div class="src">github · données brutes</div>
+        <div class="ttl">data/pc/&lt;version&gt; — JSON par version ↗</div>
+        <div class="note">blocks.json, recipes.json, blockCollisionShapes.json, biomes.json… téléchargeables directement.</div>
+      </a>
+      <a class="ref rv" href="https://github.com/Articdive/ArticData" target="_blank" rel="noopener">
+        <div class="src">github · ArticData</div>
+        <div class="ttl">Générateur Java — block properties, fluids ↗</div>
+        <div class="note">Alternative/complément : extraction native depuis le jar. Block properties, fluid properties, map colors.</div>
+      </a>
+      <a class="ref rv" href="https://minecraft.wiki/" target="_blank" rel="noopener">
+        <div class="src">minecraft.wiki · CC BY-NC-SA</div>
+        <div class="ttl">Wiki — mécaniques &amp; comportements ↗</div>
+        <div class="note">Worldgen, fluides, lumière, ticking. Référence humaine. Non-commercial : lecture OK, scraping en produit non.</div>
+      </a>
+      <a class="ref rv" href="https://minecraft.wiki/w/Special:Export" target="_blank" rel="noopener">
+        <div class="src">minecraft.wiki · Special:Export</div>
+        <div class="ttl">Export de pages wiki (XML) ↗</div>
+        <div class="note">Pas de dump auto ; export page par page, ou demande complète via Special:Contact.</div>
+      </a>
+      <a class="ref rv" href="https://wiki.fabricmc.net/tutorial:recipes" target="_blank" rel="noopener">
+        <div class="src">Fabric Wiki</div>
+        <div class="ttl">Format des recettes &amp; blockstates ↗</div>
+        <div class="note">Documentation du schéma JSON natif (crafting_shaped, key, pattern, result).</div>
+      </a>
+    </div>
+
+    <h3 class="rv res-h">Textures — téléchargement direct</h3>
+    <div class="refs">
+      <a class="ref rv" href="https://modrinth.com/resourcepack/faithful-32x/versions" target="_blank" rel="noopener">
+        <div class="src">Modrinth · Faithful 32x</div>
+        <div class="ttl">Faithful 32× — vanilla-like, open source ↗</div>
+        <div class="note">Look Minecraft sans assets Mojang. Toutes versions. Vérifier la « Faithful License » pour usage commercial.</div>
+      </a>
+      <a class="ref rv" href="https://modrinth.com/resourcepack/faithful-64x/versions" target="_blank" rel="noopener">
+        <div class="src">Modrinth · Faithful 64x</div>
+        <div class="ttl">Faithful 64× — résolution quadruple ↗</div>
+        <div class="note">Même base, plus de détail. Blocks, items, entities, GUI, fonts séparés.</div>
+      </a>
+      <a class="ref rv" href="https://faithfulpack.net/downloads" target="_blank" rel="noopener">
+        <div class="src">faithfulpack.net</div>
+        <div class="ttl">Site officiel Faithful — tous les packs ↗</div>
+        <div class="note">Source officielle. Les téléchargements hors site officiel sont non supportés.</div>
+      </a>
+      <a class="ref rv" href="https://github.com/fenhl/simplify" target="_blank" rel="noopener">
+        <div class="src">github · fenhl/simplify</div>
+        <div class="ttl">Simplify — textures recréées from scratch ↗</div>
+        <div class="note">Recréées sans copier les assets Mojang. La route la plus propre pour de la distribution.</div>
+      </a>
+    </div>
+
+    <div class="callout rv">
+      <div class="h">⚠ Légal — à trancher avant distribution</div>
+      <p><strong>Redistribuer les textures Mojang viole l'EULA</strong> : retexturer ou s'en servir comme référence est toléré, mais les inclure/distribuer dans ton produit ne l'est pas. Extraction du <code>.jar</code> = <span class="kw">OK en local/proto</span>, <span class="kw-r">pas en distribution</span>. Faithful est open-source mais sous sa propre licence (pas CC0/MIT) → vérifier les termes commerciaux. Le dataset <strong>minecraft-data</strong> est MIT (safe produit) ; le <strong>wiki</strong> est CC BY-NC-SA (non-commercial). Route 100 % safe pour un produit distribué : <strong>assets maison ou CC0</strong> + données MIT.</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="brand"><span class="dot"></span><b>VOXEL_ENGINE</b><span>/ render-pipeline · v1</span></div>
+    <p>plan technique · overworld · système A (terrain statique) · rust + wgpu · sources &amp; téléchargements inclus</p>
+  </div>
+</footer>
+
+<script>
+  const io = new IntersectionObserver((entries)=>{
+    entries.forEach(e=>{ if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target);} });
+  },{threshold:.12, rootMargin:'0px 0px -8% 0px'});
+  document.querySelectorAll('.rv').forEach((el,i)=>{
+    el.style.transitionDelay = (Math.min(i%6,5)*0.04)+'s';
+    io.observe(el);
+  });
+</script>
+</body>
+</html>

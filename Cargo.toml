@@ -1,0 +1,28 @@
+[workspace]
+resolver = "2"
+members = ["app", "crates/voxel-world", "crates/voxel-mesh", "crates/voxel-render"]
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+authors = ["Chris <sahquelfou@gmail.com>"]
+
+[workspace.dependencies]
+wgpu = "29"
+winit = "0.30"
+glam = "0.33"
+bytemuck = { version = "1", features = ["derive"] }
+pollster = "0.4"
+rayon = "1"
+log = "0.4"
+env_logger = "0.11"
+
+voxel-world = { path = "crates/voxel-world" }
+voxel-mesh = { path = "crates/voxel-mesh" }
+voxel-render = { path = "crates/voxel-render" }
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
