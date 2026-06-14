@@ -8,6 +8,8 @@ pub mod gpu;
 pub mod pipeline;
 pub mod renderer;
 pub mod texture;
+pub mod ui;
 
 pub use camera::Camera;
 pub use renderer::Renderer;
+pub use ui::{UiBatch, Overlay};

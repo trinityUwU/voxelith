@@ -71,6 +71,23 @@ pub fn face_texture(b: BlockState, face: Face) -> u32 {
     }
 }
 
+/// Nom lisible d'un bloc (HUD, chat).
+pub fn name(b: BlockState) -> &'static str {
+    match b {
+        AIR => "air",
+        STONE => "stone",
+        DIRT => "dirt",
+        GRASS => "grass",
+        SAND => "sand",
+        SNOW => "snow",
+        WATER => "water",
+        GRAVEL => "gravel",
+        WOOD => "wood",
+        LEAVES => "leaves",
+        _ => "?",
+    }
+}
+
 /// `true` si une face de `current` doit être dessinée face au voisin `neighbor`.
 /// Solide visible contre air/liquide ; liquide visible seulement contre l'air (surface).
 pub fn renders_against(current: BlockState, neighbor: BlockState) -> bool {

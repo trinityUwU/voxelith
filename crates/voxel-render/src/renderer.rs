@@ -15,6 +15,7 @@ use crate::frustum::Frustum;
 use crate::gpu::Gpu;
 use crate::pipeline::{build_pipeline, camera_bind_group_layout, texture_bind_group_layout};
 use crate::texture::BlockTextures;
+use crate::ui::{Overlay, UiBatch};
 
 /// Maillage d'un chunk résident sur le GPU, avec son AABB pour le frustum culling.
 struct GpuMesh {
@@ -32,6 +33,7 @@ pub struct Renderer {
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
     texture_bind_group: wgpu::BindGroup,
+    overlay: Overlay,
     meshes: HashMap<ChunkPos, GpuMesh>,
 }
 
@@ -65,6 +67,7 @@ impl Renderer {
         });
 
         let pipeline = build_pipeline(&gpu.device, gpu.config.format, (&camera_bgl, &texture_bgl));
+        let overlay = Overlay::new(&gpu.device, gpu.config.format);
 
         Self {
             gpu,
@@ -73,6 +76,7 @@ impl Renderer {
             camera_buffer,
             camera_bind_group,
             texture_bind_group,
+            overlay,
             meshes: HashMap::new(),
         }
     }
@@ -106,6 +110,11 @@ impl Renderer {
         self.meshes.len()
     }
 
+    /// Taille courante de la surface (pour la mise en page de l'UI).
+    pub fn size(&self) -> (u32, u32) {
+        (self.gpu.config.width, self.gpu.config.height)
+    }
+
     pub fn resize(&mut self, width: u32, height: u32) {
         self.gpu.resize(width, height);
         self.camera.aspect = self.gpu.aspect();
@@ -120,8 +129,8 @@ impl Renderer {
         self.gpu.queue.write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&self.camera.uniform()));
     }
 
-    /// Dessine une frame complète du terrain visible (frustum-cullé).
-    pub fn render(&mut self) {
+    /// Dessine une frame : terrain frustum-cullé puis overlay UI 2D.
+    pub fn render(&mut self, ui: &UiBatch) {
         self.update_camera();
         let frame = match self.gpu.surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(f) | wgpu::CurrentSurfaceTexture::Suboptimal(f) => f,
@@ -139,6 +148,14 @@ impl Renderer {
 
         let frustum = Frustum::from_view_proj(&self.camera.view_proj());
         self.terrain_pass(&mut encoder, &view, &frustum);
+        self.overlay.render(
+            &self.gpu.device,
+            &self.gpu.queue,
+            &mut encoder,
+            &view,
+            ui,
+            (self.gpu.config.width, self.gpu.config.height),
+        );
         self.gpu.queue.submit(std::iter::once(encoder.finish()));
         frame.present();
     }
