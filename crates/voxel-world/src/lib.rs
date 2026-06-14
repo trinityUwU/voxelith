@@ -10,4 +10,4 @@ pub mod world;
 pub use block::{BlockState, ChunkPos};
 pub use chunk::{Aabb, Chunk, MeshState};
 pub use palette::SubChunk;
-pub use world::World;
+pub use world::{World, WORLD_HEIGHT};

@@ -12,11 +12,11 @@ use voxel_world::{ChunkPos, World};
 use winit::application::ApplicationHandler;
 use winit::event::{DeviceEvent, DeviceId, ElementState, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
-use winit::keyboard::PhysicalKey;
-use winit::window::{Window, WindowId};
+use winit::keyboard::{KeyCode, PhysicalKey};
+use winit::window::{CursorGrabMode, Window, WindowId};
 
-/// Rayon de génération de chunks autour de l'origine pour le socle.
-const SOCLE_RADIUS: i32 = 8;
+/// Rayon de génération de chunks autour de l'origine (49×49 = 2401 chunks).
+const SOCLE_RADIUS: i32 = 24;
 const MOUSE_SENSITIVITY: f32 = 0.0025;
 
 /// Application winit : fenêtre + renderer + état d'entrée, créés au `resumed`.
@@ -46,8 +46,9 @@ impl ApplicationHandler for App {
         if self.renderer.is_some() {
             return;
         }
-        let attrs = Window::default_attributes().with_title("voxelith — phase 00");
+        let attrs = Window::default_attributes().with_title("voxelith — phase 01");
         let window = Arc::new(event_loop.create_window(attrs).expect("création fenêtre"));
+        grab_cursor(&window);
         let world = Self::build_world();
         let renderer = pollster::block_on(Renderer::new(window.clone(), &world));
         log::info!("monde généré : {} chunks", world.loaded_count());
@@ -65,6 +66,10 @@ impl ApplicationHandler for App {
             WindowEvent::Resized(size) => renderer.resize(size.width, size.height),
             WindowEvent::KeyboardInput { event, .. } => {
                 if let PhysicalKey::Code(code) = event.physical_key {
+                    if code == KeyCode::Escape {
+                        event_loop.exit();
+                        return;
+                    }
                     self.input.set(code, event.state == ElementState::Pressed);
                 }
             }
@@ -103,6 +108,17 @@ impl App {
         self.input.apply(renderer.camera_mut(), dt);
         renderer.render();
     }
+}
+
+/// Verrouille et masque le curseur pour le contrôle caméra FPS (fallback Confined sur X11).
+fn grab_cursor(window: &Window) {
+    let grabbed = window
+        .set_cursor_grab(CursorGrabMode::Locked)
+        .or_else(|_| window.set_cursor_grab(CursorGrabMode::Confined));
+    if grabbed.is_err() {
+        log::warn!("capture du curseur indisponible sur cette plateforme");
+    }
+    window.set_cursor_visible(false);
 }
 
 fn main() {

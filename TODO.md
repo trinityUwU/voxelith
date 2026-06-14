@@ -1,10 +1,6 @@
 # TODO — voxelith
 
-## En cours
-
-- [ ] Valider visuellement le socle phase 00 (lancer la fenêtre, observer terrain + FPS)
-
-## Phase 01 — indirect + frustum culling
+## Phase 01b — GPU-driven indirect
 
 - [ ] Upload des AABB de chunk dans un buffer GPU persistant
 - [ ] Compute shader de frustum culling (test AABB vs 6 plans)
@@ -13,7 +9,7 @@
 
 ## Backlog
 
-- [ ] Greedy/binary meshing à la place du face-culling naïf (culling cross-chunk inclus)
+- [ ] Greedy/binary meshing à la place du face-culling naïf
 - [ ] Bit-packing réel des indices de palette
 - [ ] Occlusion Hi-Z (phase 02)
 - [ ] Octree de LOD + agrégation 2³/4³ + imposteurs (phase 03)
@@ -30,3 +26,4 @@
 - [x] Meshing LOD0 face-culling
 - [x] Pipeline wgpu + caméra fly + shader terrain éclairé
 - [x] Docs (README, STATE, ROADMAP), scripts start/stop/restart
+- [x] Phase 01a : cross-chunk face culling, frustum culling CPU, radius 24, capture souris + Échap

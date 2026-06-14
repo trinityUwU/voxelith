@@ -46,5 +46,6 @@ voxelith/
             ├── gpu.rs              Contexte wgpu : surface, device, queue, depth
             ├── pipeline.rs         Render pipeline terrain, bind group caméra
             ├── camera.rs           Caméra perspective + CameraUniform
-            └── renderer.rs         Orchestration frame : upload meshes, render pass
+            ├── frustum.rs          Frustum (Gribb–Hartmann) + test AABB pour cull CPU
+            └── renderer.rs         Orchestration frame : upload meshes, render pass cullé
 ```

@@ -4,19 +4,21 @@
 use std::sync::Arc;
 
 use voxel_mesh::{mesh_chunk, ChunkMesh};
-use voxel_world::World;
+use voxel_world::{Aabb, World};
 use wgpu::util::DeviceExt;
 use winit::window::Window;
 
 use crate::camera::Camera;
+use crate::frustum::Frustum;
 use crate::gpu::Gpu;
 use crate::pipeline::{build_pipeline, camera_bind_group_layout};
 
-/// Maillage d'un chunk résident sur le GPU.
+/// Maillage d'un chunk résident sur le GPU, avec son AABB pour le frustum culling.
 struct GpuMesh {
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
     index_count: u32,
+    aabb: Aabb,
 }
 
 /// État de rendu complet : contexte GPU, pipeline, caméra et chunks meshés.
@@ -63,19 +65,20 @@ impl Renderer {
         renderer
     }
 
-    /// Meshe et téléverse tous les chunks chargés (phase 00 : synchrone).
+    /// Meshe et téléverse tous les chunks chargés (synchrone ; async = phase 05).
     pub fn upload_world(&mut self, world: &World) {
         self.meshes.clear();
         for chunk in world.iter() {
-            let mesh = mesh_chunk(chunk);
+            let mesh = mesh_chunk(chunk, world);
             if !mesh.is_empty() {
-                self.meshes.push(self.upload_mesh(&mesh));
+                self.meshes.push(self.upload_mesh(&mesh, chunk.aabb));
             }
         }
+        log::info!("{} chunks meshés (non vides)", self.meshes.len());
     }
 
     /// Crée les vertex/index buffers GPU d'un maillage de chunk.
-    fn upload_mesh(&self, mesh: &ChunkMesh) -> GpuMesh {
+    fn upload_mesh(&self, mesh: &ChunkMesh, aabb: Aabb) -> GpuMesh {
         let vertex_buffer = self.gpu.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("chunk-vertices"),
             contents: bytemuck::cast_slice(&mesh.vertices),
@@ -86,7 +89,7 @@ impl Renderer {
             contents: bytemuck::cast_slice(&mesh.indices),
             usage: wgpu::BufferUsages::INDEX,
         });
-        GpuMesh { vertex_buffer, index_buffer, index_count: mesh.index_count() }
+        GpuMesh { vertex_buffer, index_buffer, index_count: mesh.index_count(), aabb }
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {
@@ -124,13 +127,14 @@ impl Renderer {
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("frame") });
 
-        self.terrain_pass(&mut encoder, &view);
+        let frustum = Frustum::from_view_proj(&self.camera.view_proj());
+        self.terrain_pass(&mut encoder, &view, &frustum);
         self.gpu.queue.submit(std::iter::once(encoder.finish()));
         frame.present();
     }
 
-    /// Render pass unique du terrain (clear ciel + depth + draws indexés).
-    fn terrain_pass(&self, encoder: &mut wgpu::CommandEncoder, view: &wgpu::TextureView) {
+    /// Render pass unique du terrain (clear ciel + depth + draws indexés frustum-cullés).
+    fn terrain_pass(&self, encoder: &mut wgpu::CommandEncoder, view: &wgpu::TextureView, frustum: &Frustum) {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("terrain-pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -157,6 +161,9 @@ impl Renderer {
         pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, &self.camera_bind_group, &[]);
         for mesh in &self.meshes {
+            if !frustum.intersects_aabb(&mesh.aabb) {
+                continue;
+            }
             pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
             pass.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
             pass.draw_indexed(0..mesh.index_count, 0, 0..1);

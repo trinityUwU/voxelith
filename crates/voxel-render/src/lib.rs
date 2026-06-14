@@ -3,6 +3,7 @@
 //! frustum + occlusion Hi-Z culling, LOD par bandes (cf. docs/ROADMAP.md).
 
 pub mod camera;
+pub mod frustum;
 pub mod gpu;
 pub mod pipeline;
 pub mod renderer;

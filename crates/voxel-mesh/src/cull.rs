@@ -1,8 +1,9 @@
 //! Responsabilité : mesher LOD0 par face-culling — émet une face uniquement
-//! quand le voxel voisin est vide. Base avant le passage au greedy/binary meshing.
+//! quand le voxel voisin est vide, voisins inter-chunks inclus (via World).
+//! Base avant le passage au greedy/binary meshing.
 
 use voxel_world::block::{SUBCHUNKS_PER_CHUNK, SUBCHUNK_SIZE};
-use voxel_world::{BlockState, Chunk};
+use voxel_world::{BlockState, Chunk, World};
 
 use crate::vertex::{ChunkMesh, Vertex};
 
@@ -18,8 +19,9 @@ const FACES: [([i32; 3], [[f32; 3]; 4]); 6] = [
 
 const MAX_Y: usize = SUBCHUNKS_PER_CHUNK * SUBCHUNK_SIZE;
 
-/// Construit le maillage LOD0 d'un chunk par face-culling interne.
-pub fn mesh_chunk(chunk: &Chunk) -> ChunkMesh {
+/// Construit le maillage LOD0 d'un chunk, voisins inter-chunks testés via `world`
+/// pour ne pas émettre de murs de bordure cachés entre deux chunks pleins.
+pub fn mesh_chunk(chunk: &Chunk, world: &World) -> ChunkMesh {
     let (ox, oz) = chunk.pos.world_origin();
     let mut mesh = ChunkMesh::default();
 
@@ -30,42 +32,25 @@ pub fn mesh_chunk(chunk: &Chunk) -> ChunkMesh {
                 if block.is_air() {
                     continue;
                 }
-                emit_block(chunk, &mut mesh, (x, y, z), (ox, oz), block);
+                let world_pos = (ox + x as i32, y as i32, oz + z as i32);
+                emit_block(world, &mut mesh, world_pos, block);
             }
         }
     }
     mesh
 }
 
-/// Émet les faces exposées d'un bloc plein.
-fn emit_block(
-    chunk: &Chunk,
-    mesh: &mut ChunkMesh,
-    local: (usize, usize, usize),
-    origin: (i32, i32),
-    block: BlockState,
-) {
-    let (x, y, z) = local;
+/// Émet les faces exposées d'un bloc plein, en coordonnées monde.
+fn emit_block(world: &World, mesh: &mut ChunkMesh, world_pos: (i32, i32, i32), block: BlockState) {
+    let (wx, wy, wz) = world_pos;
     let color = block_color(block);
     for (offset, corners) in FACES.iter() {
-        if !is_face_exposed(chunk, x as i32 + offset[0], y as i32 + offset[1], z as i32 + offset[2]) {
+        if world.block_at(wx + offset[0], wy + offset[1], wz + offset[2]).is_solid() {
             continue;
         }
-        let base = [origin.0 as f32 + x as f32, y as f32, origin.1 as f32 + z as f32];
+        let base = [wx as f32, wy as f32, wz as f32];
         push_quad(mesh, base, corners, *offset, color);
     }
-}
-
-/// `true` si le voisin est hors-chunk ou vide → la face doit être dessinée.
-fn is_face_exposed(chunk: &Chunk, nx: i32, ny: i32, nz: i32) -> bool {
-    if nx < 0 || nz < 0 || ny < 0 {
-        return true;
-    }
-    let (nx, ny, nz) = (nx as usize, ny as usize, nz as usize);
-    if nx >= SUBCHUNK_SIZE || nz >= SUBCHUNK_SIZE || ny >= MAX_Y {
-        return true;
-    }
-    chunk.get(nx, ny, nz).is_air()
 }
 
 /// Ajoute un quad (2 triangles) au maillage.
