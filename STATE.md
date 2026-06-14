@@ -4,7 +4,16 @@
 
 ## Où on en est
 
-**Batch « monde infini » — livré.** Streaming async + worldgen multi-noise + biomes + greedy meshing + textures procédurales. Validé en run release : ~1000 chunks streamés, zéro crash.
+**Batch « jeu jouable » — livré.** Gameplay complet + UI maison + menus + persistance.
+
+- **Gamemodes** : Creative (vol libre) / Survival (gravité + collision AABB + saut). `Player` (`app/player.rs`), collision vs blocs solides via `WorldStore`. Bascule `/gamemode`.
+- **Édition de blocs** (`app/edit.rs`) : raycast DDA, casser (clic G) / poser (clic D), palette touches 1-8, re-mesh chunk + voisins. Overrides dans `WorldStore` (`store.rs`).
+- **UI maison** (`voxel-render/ui/`) : police bitmap 5×7, overlay 2D alpha-blend (texte en pixels-quads), kit immediate-mode souris (`app/ui_kit.rs`). Zéro dépendance UI externe.
+- **Chat** (`app/chat.rs`) : touche T, historique fondu, commandes `/gamemode /tp /seed /help`.
+- **Menus** (`app/menu.rs`) : machine à états (Main → WorldSelect → Create → InGame, Settings, Pause). Boutons cliquables, champs de saisie nom/seed. Curseur grab en jeu / libre en menu.
+- **Persistance** (`app/world_save.rs`) : mondes sous `~/.local/share/voxelith/saves/<slug>/` (meta.json + edits.json, serde_json). Pause (Échap) → « Sauvegarder et quitter ».
+
+**Batch « monde infini » — livré.** Streaming async + worldgen multi-noise + biomes + greedy meshing + textures procédurales.
 
 - **Streaming infini** (`app/src/stream.rs`) : `ChunkManager` charge/décharge les chunks autour du joueur, génération + greedy meshing sur thread pool **rayon**, résultats collectés par le main thread via channel crossbeam. Plus de bordure fixe. **View distance 32 chunks (512 blocs)**, budget 16 uploads/frame. ~3200 chunks à 60 FPS en release (CPU frustum cull encaisse).
 - **Worldgen multi-noise** (`voxel-world/src/worldgen.rs`) : FBM Perlin (crate `noise`), heightmap via splines continentalness + erosion + peaks/valleys, sea level 62. Déterministe → le mesher sonde les voisins cross-chunk via `block_at`.

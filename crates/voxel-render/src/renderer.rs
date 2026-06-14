@@ -106,6 +106,11 @@ impl Renderer {
         self.meshes.remove(&pos);
     }
 
+    /// Vide tous les chunks GPU (changement/fermeture de monde).
+    pub fn clear_chunks(&mut self) {
+        self.meshes.clear();
+    }
+
     pub fn loaded_count(&self) -> usize {
         self.meshes.len()
     }

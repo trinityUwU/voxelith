@@ -40,6 +40,24 @@ impl WorldStore {
         self.overrides.write().unwrap().insert((wx, wy, wz), block);
     }
 
+    /// Exporte les overrides pour la sauvegarde : (x, y, z, id de bloc).
+    pub fn export_overrides(&self) -> Vec<(i32, i32, i32, u16)> {
+        self.overrides
+            .read()
+            .unwrap()
+            .iter()
+            .map(|(&(x, y, z), &b)| (x, y, z, b.0))
+            .collect()
+    }
+
+    /// Charge des overrides depuis une sauvegarde.
+    pub fn import_overrides(&self, data: &[(i32, i32, i32, u16)]) {
+        let mut overrides = self.overrides.write().unwrap();
+        for &(x, y, z, id) in data {
+            overrides.insert((x, y, z), BlockState(id));
+        }
+    }
+
     /// Teinte d'herbe d'une colonne (déléguée au worldgen).
     pub fn grass_tint(&self, wx: i32, wz: i32) -> [u8; 3] {
         self.gen.grass_tint(wx, wz)
