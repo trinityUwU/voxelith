@@ -6,7 +6,7 @@
 
 **Batch « monde infini » — livré.** Streaming async + worldgen multi-noise + biomes + greedy meshing + textures procédurales. Validé en run release : ~1000 chunks streamés, zéro crash.
 
-- **Streaming infini** (`app/src/stream.rs`) : `ChunkManager` charge/décharge les chunks autour du joueur, génération + greedy meshing sur thread pool **rayon**, résultats collectés par le main thread via channel crossbeam. Plus de bordure fixe. View distance 16 chunks, budget 8 uploads/frame.
+- **Streaming infini** (`app/src/stream.rs`) : `ChunkManager` charge/décharge les chunks autour du joueur, génération + greedy meshing sur thread pool **rayon**, résultats collectés par le main thread via channel crossbeam. Plus de bordure fixe. **View distance 32 chunks (512 blocs)**, budget 16 uploads/frame. ~3200 chunks à 60 FPS en release (CPU frustum cull encaisse).
 - **Worldgen multi-noise** (`voxel-world/src/worldgen.rs`) : FBM Perlin (crate `noise`), heightmap via splines continentalness + erosion + peaks/valleys, sea level 62. Déterministe → le mesher sonde les voisins cross-chunk via `block_at`.
 - **Biomes** (`biome.rs`) : sélection multi-noise temperature/humidity (plains, forest, savanna, desert, snowy, taiga), surface/filler + teinte d'herbe par biome.
 - **Greedy meshing** (`voxel-mesh/src/greedy.rs`) : fusion des faces coplanaires, UV de tiling + teinte + index de texture par face.

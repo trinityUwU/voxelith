@@ -51,6 +51,6 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
 
     // Fog de distance : ferme l'horizon, masque le bord du terrain chargé.
     let dist = length(in.world_pos - camera.camera_pos.xyz);
-    let fog = clamp((dist - 150.0) / 95.0, 0.0, 1.0);
+    let fog = clamp((dist - 370.0) / 110.0, 0.0, 1.0);
     return vec4<f32>(mix(lit, FOG_COLOR, fog), 1.0);
 }

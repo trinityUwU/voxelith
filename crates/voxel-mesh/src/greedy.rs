@@ -136,15 +136,15 @@ fn emit_quad(mesh: &mut ChunkMesh, axes: (usize, usize, usize), plane: i32, rect
     normal[d] = if m.positive { 1.0 } else { -1.0 };
     let tint = [m.tint[0] as f32 / 255.0, m.tint[1] as f32 / 255.0, m.tint[2] as f32 / 255.0];
     let start = mesh.vertices.len() as u32;
-    let uvs = [[0.0, 0.0], [w as f32, 0.0], [w as f32, h as f32], [0.0, h as f32]];
     let corners = [
         base,
         add(base, du_vec),
         add(add(base, du_vec), dv_vec),
         add(base, dv_vec),
     ];
-    for k in 0..4 {
-        mesh.vertices.push(Vertex { position: corners[k], normal, uv: uvs[k], tint, layer: m.layer });
+    for corner in corners {
+        let uv = corner_uv(corner, d);
+        mesh.vertices.push(Vertex { position: corner, normal, uv, tint, layer: m.layer });
     }
     mesh.indices.extend_from_slice(&[start, start + 1, start + 2, start, start + 2, start + 3]);
 }
@@ -152,4 +152,14 @@ fn emit_quad(mesh: &mut ChunkMesh, axes: (usize, usize, usize), plane: i32, rect
 /// Somme composante à composante de deux vecteurs.
 fn add(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
     [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
+}
+
+/// UV de tiling dérivé des coordonnées monde : 1 répétition par bloc, axe vertical
+/// = Y pour les faces latérales (frange d'herbe en haut), peu importe l'orientation.
+fn corner_uv(p: [f32; 3], d: usize) -> [f32; 2] {
+    match d {
+        1 => [p[0], p[2]],
+        0 => [p[2], -p[1]],
+        _ => [p[0], -p[1]],
+    }
 }

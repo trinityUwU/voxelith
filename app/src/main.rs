@@ -20,9 +20,9 @@ use winit::window::{CursorGrabMode, Window, WindowId};
 /// Seed du monde.
 const SEED: u32 = 1337;
 /// Distance de vue en chunks (rayon).
-const VIEW_DISTANCE: i32 = 16;
+const VIEW_DISTANCE: i32 = 32;
 /// Chunks téléversés au maximum par frame (lisse les pics de streaming).
-const UPLOAD_BUDGET: usize = 8;
+const UPLOAD_BUDGET: usize = 16;
 const MOUSE_SENSITIVITY: f32 = 0.0025;
 
 /// Application winit : fenêtre, renderer et streaming, créés au `resumed`.
