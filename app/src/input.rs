@@ -1,12 +1,10 @@
-//! Responsabilité : état clavier de la caméra fly et application du déplacement.
+//! Responsabilité : état clavier courant (touches enfoncées) interrogé par le joueur.
 
 use std::collections::HashSet;
 
-use glam::Vec3;
-use voxel_render::Camera;
 use winit::keyboard::KeyCode;
 
-/// Touches actuellement enfoncées pour le déplacement fly.
+/// Ensemble des touches actuellement enfoncées.
 #[derive(Default)]
 pub struct InputState {
     pressed: HashSet<KeyCode>,
@@ -21,33 +19,13 @@ impl InputState {
         }
     }
 
-    /// Déplace la caméra selon les touches WASD/espace/shift sur `dt` secondes.
-    pub fn apply(&self, camera: &mut Camera, dt: f32) {
-        let speed = 40.0 * dt;
-        let forward = camera.forward();
-        let right = forward.cross(Vec3::Y).normalize();
-        let mut delta = Vec3::ZERO;
+    /// `true` si la touche est enfoncée.
+    pub fn is(&self, key: KeyCode) -> bool {
+        self.pressed.contains(&key)
+    }
 
-        if self.pressed.contains(&KeyCode::KeyW) {
-            delta += forward;
-        }
-        if self.pressed.contains(&KeyCode::KeyS) {
-            delta -= forward;
-        }
-        if self.pressed.contains(&KeyCode::KeyD) {
-            delta += right;
-        }
-        if self.pressed.contains(&KeyCode::KeyA) {
-            delta -= right;
-        }
-        if self.pressed.contains(&KeyCode::Space) {
-            delta += Vec3::Y;
-        }
-        if self.pressed.contains(&KeyCode::ShiftLeft) {
-            delta -= Vec3::Y;
-        }
-        if delta != Vec3::ZERO {
-            camera.position += delta.normalize() * speed;
-        }
+    /// Vide l'état (à l'ouverture d'un menu/chat pour éviter les touches collées).
+    pub fn clear(&mut self) {
+        self.pressed.clear();
     }
 }

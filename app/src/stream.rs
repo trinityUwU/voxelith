@@ -9,7 +9,7 @@ use crossbeam_channel::{unbounded, Receiver, Sender};
 use glam::Vec3;
 use voxel_mesh::{mesh_chunk, ChunkMesh};
 use voxel_world::block::SUBCHUNK_SIZE;
-use voxel_world::{Aabb, ChunkPos, Worldgen};
+use voxel_world::{Aabb, ChunkPos, WorldStore};
 
 /// Maillage d'un chunk généré sur un thread de fond, prêt à être uploadé.
 pub struct ChunkResult {
@@ -20,7 +20,7 @@ pub struct ChunkResult {
 
 /// Gère l'ensemble des chunks chargés et l'émission des jobs de génération.
 pub struct ChunkManager {
-    gen: Arc<Worldgen>,
+    store: Arc<WorldStore>,
     view_distance: i32,
     handled: HashSet<ChunkPos>,
     center: ChunkPos,
@@ -29,17 +29,28 @@ pub struct ChunkManager {
 }
 
 impl ChunkManager {
-    /// Crée le manager pour une seed et une distance de vue (en chunks).
-    pub fn new(seed: u32, view_distance: i32) -> Self {
+    /// Crée le manager pour un monde partagé et une distance de vue (en chunks).
+    pub fn new(store: Arc<WorldStore>, view_distance: i32) -> Self {
         let (tx, rx) = unbounded();
         Self {
-            gen: Arc::new(Worldgen::new(seed)),
+            store,
             view_distance,
             handled: HashSet::new(),
             center: ChunkPos::new(i32::MAX, i32::MAX),
             tx,
             rx,
         }
+    }
+
+    /// Re-meshe un chunk déjà chargé (après une édition de bloc).
+    pub fn remesh(&self, pos: ChunkPos) {
+        let (store, tx) = (self.store.clone(), self.tx.clone());
+        rayon::spawn(move || {
+            let chunk = store.generate_chunk(pos);
+            let aabb = chunk.aabb;
+            let mesh = mesh_chunk(&chunk, &store);
+            let _ = tx.send(ChunkResult { pos, mesh, aabb });
+        });
     }
 
     /// Met à jour l'ensemble chargé selon la position joueur : émet les jobs des
@@ -69,11 +80,11 @@ impl ChunkManager {
         wanted.sort_by_key(|p| dist2(*p, center));
         for pos in wanted {
             self.handled.insert(pos);
-            let (gen, tx) = (self.gen.clone(), self.tx.clone());
+            let (store, tx) = (self.store.clone(), self.tx.clone());
             rayon::spawn(move || {
-                let chunk = gen.generate_chunk(pos);
+                let chunk = store.generate_chunk(pos);
                 let aabb = chunk.aabb;
-                let mesh = mesh_chunk(&chunk, &gen);
+                let mesh = mesh_chunk(&chunk, &store);
                 let _ = tx.send(ChunkResult { pos, mesh, aabb });
             });
         }

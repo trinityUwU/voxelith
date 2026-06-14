@@ -4,7 +4,7 @@
 
 use voxel_world::block::{BlockState, SUBCHUNK_SIZE};
 use voxel_world::registry::{face_texture, renders_against, Face, GRASS, LEAVES};
-use voxel_world::{Chunk, Worldgen, WORLD_HEIGHT};
+use voxel_world::{Chunk, WorldStore, WORLD_HEIGHT};
 
 use crate::vertex::{ChunkMesh, Vertex};
 
@@ -19,7 +19,7 @@ struct Mask {
 }
 
 /// Construit le maillage greedy d'un chunk (3 axes), bordures via `gen`.
-pub fn mesh_chunk(chunk: &Chunk, gen: &Worldgen) -> ChunkMesh {
+pub fn mesh_chunk(chunk: &Chunk, gen: &WorldStore) -> ChunkMesh {
     let dims = [SUBCHUNK_SIZE as i32, WORLD_HEIGHT, SUBCHUNK_SIZE as i32];
     let (ox, oz) = chunk.pos.world_origin();
     let mut mesh = ChunkMesh::default();
@@ -30,7 +30,7 @@ pub fn mesh_chunk(chunk: &Chunk, gen: &Worldgen) -> ChunkMesh {
 }
 
 /// Échantillonne un bloc en coordonnées locales (hors chunk → worldgen).
-fn sample(chunk: &Chunk, gen: &Worldgen, ox: i32, oz: i32, l: [i32; 3]) -> BlockState {
+fn sample(chunk: &Chunk, gen: &WorldStore, ox: i32, oz: i32, l: [i32; 3]) -> BlockState {
     let dims = [SUBCHUNK_SIZE as i32, WORLD_HEIGHT, SUBCHUNK_SIZE as i32];
     if (0..dims[0]).contains(&l[0]) && (0..dims[1]).contains(&l[1]) && (0..dims[2]).contains(&l[2]) {
         chunk.get(l[0] as usize, l[1] as usize, l[2] as usize)
@@ -40,7 +40,7 @@ fn sample(chunk: &Chunk, gen: &Worldgen, ox: i32, oz: i32, l: [i32; 3]) -> Block
 }
 
 /// Greedy meshing le long d'un axe `d` : remplit puis fusionne le masque par tranche.
-fn mesh_axis(chunk: &Chunk, gen: &Worldgen, o: (i32, i32), dims: &[i32; 3], d: usize, mesh: &mut ChunkMesh) {
+fn mesh_axis(chunk: &Chunk, gen: &WorldStore, o: (i32, i32), dims: &[i32; 3], d: usize, mesh: &mut ChunkMesh) {
     let (u, v) = ((d + 1) % 3, (d + 2) % 3);
     let (du, dv) = (dims[u] as usize, dims[v] as usize);
     let mut mask: Vec<Option<Mask>> = vec![None; du * dv];
@@ -60,7 +60,7 @@ fn mesh_axis(chunk: &Chunk, gen: &Worldgen, o: (i32, i32), dims: &[i32; 3], d: u
 }
 
 /// Détermine la face entre le voxel à `x` et son voisin `x + 1` le long de `d`.
-fn face(chunk: &Chunk, gen: &Worldgen, o: (i32, i32), d: usize, x: [i32; 3]) -> Option<Mask> {
+fn face(chunk: &Chunk, gen: &WorldStore, o: (i32, i32), d: usize, x: [i32; 3]) -> Option<Mask> {
     let mut xq = x;
     xq[d] += 1;
     let a = sample(chunk, gen, o.0, o.1, x);
