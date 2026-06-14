@@ -30,6 +30,13 @@ impl Chat {
         self.input.clear();
     }
 
+    /// Ouvre le chat avec un texte pré-rempli (ex. "/" pour une commande).
+    pub fn open_with(&mut self, prefix: &str) {
+        self.open = true;
+        self.input.clear();
+        self.input.push_str(prefix);
+    }
+
     /// Ferme le chat sans envoyer.
     pub fn close(&mut self) {
         self.open = false;

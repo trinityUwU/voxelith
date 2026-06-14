@@ -165,10 +165,13 @@ impl App {
             return;
         }
         if pressed {
+            if text == Some("/") {
+                self.open_chat(Some("/"));
+                return;
+            }
             match code {
                 KeyCode::KeyT => {
-                    self.chat.open();
-                    self.input.clear();
+                    self.open_chat(None);
                     return;
                 }
                 KeyCode::Escape => {
@@ -184,14 +187,28 @@ impl App {
         self.input.set(code, pressed);
     }
 
-    /// Saisie clavier dans le chat.
+    /// Ouvre le chat (optionnellement pré-rempli) et libère le curseur.
+    fn open_chat(&mut self, prefix: Option<&str>) {
+        match prefix {
+            Some(p) => self.chat.open_with(p),
+            None => self.chat.open(),
+        }
+        self.input.clear();
+        self.set_cursor_grabbed(false);
+    }
+
+    /// Saisie clavier dans le chat. Ferme = re-capture du curseur.
     fn on_chat_key(&mut self, code: KeyCode, text: Option<&str>) {
         match code {
-            KeyCode::Escape => self.chat.close(),
+            KeyCode::Escape => {
+                self.chat.close();
+                self.set_cursor_grabbed(true);
+            }
             KeyCode::Enter | KeyCode::NumpadEnter => {
                 if let Some(line) = self.chat.submit() {
                     self.run_command(line);
                 }
+                self.set_cursor_grabbed(true);
             }
             KeyCode::Backspace => self.chat.backspace(),
             _ => {

@@ -43,8 +43,16 @@ impl Camera {
     }
 
     /// Matrice view-projection courante (clip space wgpu, near 0.1).
+    /// Le vecteur up est recalculé perpendiculaire au regard : pas de
+    /// dégénérescence ni de flip 90° quand on regarde quasi à la verticale.
     pub fn view_proj(&self) -> Mat4 {
-        let view = Mat4::look_to_rh(self.position, self.forward(), Vec3::Y);
+        let forward = self.forward();
+        let mut right = forward.cross(Vec3::Y);
+        if right.length_squared() < 1e-5 {
+            right = Vec3::X;
+        }
+        let up = right.normalize().cross(forward);
+        let view = Mat4::look_to_rh(self.position, forward, up);
         let proj = Mat4::perspective_rh(self.fov_y, self.aspect, 0.1, 4000.0);
         proj * view
     }

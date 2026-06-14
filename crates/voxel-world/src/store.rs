@@ -27,6 +27,11 @@ impl WorldStore {
         self.seed
     }
 
+    /// `true` si le bloc à (x, y, z) est solide (collision).
+    pub fn is_solid(&self, x: i32, y: i32, z: i32) -> bool {
+        crate::registry::kind(self.block_at(x, y, z)) == crate::registry::BlockKind::Solid
+    }
+
     /// État du bloc : override d'édition si présent, sinon worldgen.
     pub fn block_at(&self, wx: i32, wy: i32, wz: i32) -> BlockState {
         if let Some(b) = self.overrides.read().unwrap().get(&(wx, wy, wz)) {

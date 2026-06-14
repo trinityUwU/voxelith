@@ -2,7 +2,6 @@
 //! AABB contre les blocs solides, et bascule de gamemode (survival/creative).
 
 use glam::{IVec3, Vec3};
-use voxel_world::registry::{kind, BlockKind};
 use voxel_world::WorldStore;
 
 use crate::input::InputState;
@@ -144,42 +143,53 @@ impl Player {
         if self.mode == GameMode::Survival {
             self.vel.y -= GRAVITY * dt;
         }
+        self.on_ground = false;
         self.move_axis(1, self.vel.y * dt, store);
         self.move_axis(0, self.vel.x * dt, store);
         self.move_axis(2, self.vel.z * dt, store);
     }
 
     /// Déplace le joueur d'un delta sur un axe et résout la pénétration des blocs.
+    /// Snappe contre la face la plus proche dans le sens du mouvement.
     fn move_axis(&mut self, axis: usize, delta: f32, store: &WorldStore) {
+        if delta == 0.0 {
+            return;
+        }
         self.pos[axis] += delta;
         let (min, max) = self.bounds();
+        let mut bound: Option<i32> = None;
         for by in min.y..=max.y {
             for bx in min.x..=max.x {
                 for bz in min.z..=max.z {
-                    if !is_solid(store, bx, by, bz) {
+                    if !store.is_solid(bx, by, bz) {
                         continue;
                     }
-                    self.resolve(axis, [bx, by, bz]);
-                    return;
+                    let coord = [bx, by, bz][axis];
+                    bound = Some(match bound {
+                        None => coord,
+                        Some(b) if delta > 0.0 => b.min(coord),
+                        Some(b) => b.max(coord),
+                    });
                 }
             }
         }
+        if let Some(b) = bound {
+            self.resolve(axis, b, delta);
+        }
     }
 
-    /// Repousse le joueur hors d'un bloc selon le sens du mouvement sur l'axe.
-    fn resolve(&mut self, axis: usize, block: [i32; 3]) {
-        let b = block[axis] as f32;
-        if axis == 1 {
-            if self.vel.y <= 0.0 {
-                self.pos.y = b + 1.0;
-                self.on_ground = true;
-            } else {
-                self.pos.y = b - HEIGHT;
-            }
-        } else if self.vel[axis] > 0.0 {
-            self.pos[axis] = b - HALF_W;
+    /// Repousse le joueur contre la face `b` selon le sens du mouvement sur l'axe.
+    fn resolve(&mut self, axis: usize, b: i32, delta: f32) {
+        let b = b as f32;
+        let size_pos = if axis == 1 { HEIGHT } else { HALF_W };
+        let size_neg = if axis == 1 { 0.0 } else { HALF_W };
+        if delta > 0.0 {
+            self.pos[axis] = b - size_pos;
         } else {
-            self.pos[axis] = b + 1.0 + HALF_W;
+            self.pos[axis] = b + 1.0 + size_neg;
+            if axis == 1 {
+                self.on_ground = true;
+            }
         }
         self.vel[axis] = 0.0;
     }
@@ -200,9 +210,4 @@ struct IVec {
     x: i32,
     y: i32,
     z: i32,
-}
-
-/// `true` si le bloc à (x, y, z) est solide (collision).
-fn is_solid(store: &WorldStore, x: i32, y: i32, z: i32) -> bool {
-    kind(store.block_at(x, y, z)) == BlockKind::Solid
 }
