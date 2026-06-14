@@ -1,44 +1,39 @@
 //! voxelith — moteur voxel type Minecraft (Rust + wgpu, GPU-driven).
-//! Binaire socle (phase 00) : fenêtre, terrain procédural, caméra fly libre.
+//! Binaire : fenêtre, streaming infini de terrain procédural, caméra fly libre.
 
 mod input;
+mod stream;
 
 use std::sync::Arc;
 use std::time::Instant;
 
+use glam::Vec3;
 use input::InputState;
+use stream::ChunkManager;
 use voxel_render::Renderer;
-use voxel_world::{ChunkPos, World};
 use winit::application::ApplicationHandler;
 use winit::event::{DeviceEvent, DeviceId, ElementState, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{CursorGrabMode, Window, WindowId};
 
-/// Rayon de génération de chunks autour de l'origine (49×49 = 2401 chunks).
-const SOCLE_RADIUS: i32 = 24;
+/// Seed du monde.
+const SEED: u32 = 1337;
+/// Distance de vue en chunks (rayon).
+const VIEW_DISTANCE: i32 = 16;
+/// Chunks téléversés au maximum par frame (lisse les pics de streaming).
+const UPLOAD_BUDGET: usize = 8;
 const MOUSE_SENSITIVITY: f32 = 0.0025;
 
-/// Application winit : fenêtre + renderer + état d'entrée, créés au `resumed`.
+/// Application winit : fenêtre, renderer et streaming, créés au `resumed`.
 #[derive(Default)]
 struct App {
     window: Option<Arc<Window>>,
     renderer: Option<Renderer>,
+    manager: Option<ChunkManager>,
     input: InputState,
     last_frame: Option<Instant>,
-}
-
-impl App {
-    /// Génère un disque de chunks de terrain autour de l'origine.
-    fn build_world() -> World {
-        let mut world = World::new();
-        for x in -SOCLE_RADIUS..=SOCLE_RADIUS {
-            for z in -SOCLE_RADIUS..=SOCLE_RADIUS {
-                world.insert(voxel_world::gen::generate_chunk(ChunkPos::new(x, z)));
-            }
-        }
-        world
-    }
+    frame: u64,
 }
 
 impl ApplicationHandler for App {
@@ -46,14 +41,15 @@ impl ApplicationHandler for App {
         if self.renderer.is_some() {
             return;
         }
-        let attrs = Window::default_attributes().with_title("voxelith — phase 01");
+        let attrs = Window::default_attributes().with_title("voxelith");
         let window = Arc::new(event_loop.create_window(attrs).expect("création fenêtre"));
         grab_cursor(&window);
-        let world = Self::build_world();
-        let renderer = pollster::block_on(Renderer::new(window.clone(), &world));
-        log::info!("monde généré : {} chunks", world.loaded_count());
+        let mut renderer = pollster::block_on(Renderer::new(window.clone()));
+        renderer.camera_mut().position = Vec3::new(0.0, 110.0, 0.0);
+
         self.window = Some(window);
         self.renderer = Some(renderer);
+        self.manager = Some(ChunkManager::new(SEED, VIEW_DISTANCE));
         self.last_frame = Some(Instant::now());
     }
 
@@ -96,17 +92,32 @@ impl ApplicationHandler for App {
 }
 
 impl App {
-    /// Avance la simulation d'une frame et redessine.
+    /// Avance le streaming + la caméra d'une frame et redessine.
     fn draw(&mut self) {
-        let Some(renderer) = self.renderer.as_mut() else {
+        let (Some(renderer), Some(manager)) = (self.renderer.as_mut(), self.manager.as_mut()) else {
             return;
         };
         let now = Instant::now();
         let dt = self.last_frame.map_or(0.016, |t| (now - t).as_secs_f32());
         self.last_frame = Some(now);
 
+        let player = renderer.camera_mut().position;
+        for pos in manager.update(player) {
+            renderer.remove_chunk(pos);
+        }
+        for result in manager.drain(UPLOAD_BUDGET) {
+            if !result.mesh.is_empty() {
+                renderer.upload_chunk(result.pos, &result.mesh, result.aabb);
+            }
+        }
+
         self.input.apply(renderer.camera_mut(), dt);
         renderer.render();
+
+        self.frame += 1;
+        if self.frame % 120 == 0 {
+            log::info!("{} chunks chargés", renderer.loaded_count());
+        }
     }
 }
 

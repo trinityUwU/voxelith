@@ -14,6 +14,8 @@ glam = "0.33"
 bytemuck = { version = "1", features = ["derive"] }
 pollster = "0.4"
 rayon = "1"
+noise = "0.9"
+crossbeam-channel = "0.5"
 log = "0.4"
 env_logger = "0.11"
 

@@ -1,17 +1,20 @@
-//! Responsabilité : orchestration du rendu d'une frame — caméra, upload des
-//! maillages de chunk en buffers GPU, render pass terrain avec depth test.
+//! Responsabilité : orchestration du rendu d'une frame — caméra, texture array,
+//! upload/retrait dynamique des maillages de chunk (streaming) et render pass
+//! terrain avec frustum culling CPU.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
-use voxel_mesh::{mesh_chunk, ChunkMesh};
-use voxel_world::{Aabb, World};
+use voxel_mesh::ChunkMesh;
+use voxel_world::{Aabb, ChunkPos};
 use wgpu::util::DeviceExt;
 use winit::window::Window;
 
 use crate::camera::Camera;
 use crate::frustum::Frustum;
 use crate::gpu::Gpu;
-use crate::pipeline::{build_pipeline, camera_bind_group_layout};
+use crate::pipeline::{build_pipeline, camera_bind_group_layout, texture_bind_group_layout};
+use crate::texture::BlockTextures;
 
 /// Maillage d'un chunk résident sur le GPU, avec son AABB pour le frustum culling.
 struct GpuMesh {
@@ -21,19 +24,20 @@ struct GpuMesh {
     aabb: Aabb,
 }
 
-/// État de rendu complet : contexte GPU, pipeline, caméra et chunks meshés.
+/// État de rendu : contexte GPU, pipeline, caméra, textures, chunks streamés.
 pub struct Renderer {
     gpu: Gpu,
     pipeline: wgpu::RenderPipeline,
     camera: Camera,
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
-    meshes: Vec<GpuMesh>,
+    texture_bind_group: wgpu::BindGroup,
+    meshes: HashMap<ChunkPos, GpuMesh>,
 }
 
 impl Renderer {
-    /// Construit le renderer et téléverse les chunks déjà présents dans `world`.
-    pub async fn new(window: Arc<Window>, world: &World) -> Self {
+    /// Construit le renderer (contexte GPU, textures procédurales, pipeline).
+    pub async fn new(window: Arc<Window>) -> Self {
         let gpu = Gpu::new(window).await;
         let camera = Camera::new(gpu.aspect());
 
@@ -46,39 +50,40 @@ impl Renderer {
         let camera_bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("camera-bg"),
             layout: &camera_bgl,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: camera_buffer.as_entire_binding(),
-            }],
+            entries: &[wgpu::BindGroupEntry { binding: 0, resource: camera_buffer.as_entire_binding() }],
         });
-        let pipeline = build_pipeline(&gpu.device, gpu.config.format, &camera_bgl);
 
-        let mut renderer = Self {
+        let textures = BlockTextures::new(&gpu.device, &gpu.queue);
+        let texture_bgl = texture_bind_group_layout(&gpu.device);
+        let texture_bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("texture-bg"),
+            layout: &texture_bgl,
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&textures.view) },
+                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&textures.sampler) },
+            ],
+        });
+
+        let pipeline = build_pipeline(&gpu.device, gpu.config.format, (&camera_bgl, &texture_bgl));
+
+        Self {
             gpu,
             pipeline,
             camera,
             camera_buffer,
             camera_bind_group,
-            meshes: Vec::new(),
-        };
-        renderer.upload_world(world);
-        renderer
-    }
-
-    /// Meshe et téléverse tous les chunks chargés (synchrone ; async = phase 05).
-    pub fn upload_world(&mut self, world: &World) {
-        self.meshes.clear();
-        for chunk in world.iter() {
-            let mesh = mesh_chunk(chunk, world);
-            if !mesh.is_empty() {
-                self.meshes.push(self.upload_mesh(&mesh, chunk.aabb));
-            }
+            texture_bind_group,
+            meshes: HashMap::new(),
         }
-        log::info!("{} chunks meshés (non vides)", self.meshes.len());
     }
 
-    /// Crée les vertex/index buffers GPU d'un maillage de chunk.
-    fn upload_mesh(&self, mesh: &ChunkMesh, aabb: Aabb) -> GpuMesh {
+    /// `true` si un chunk est déjà résident sur le GPU.
+    pub fn has_chunk(&self, pos: ChunkPos) -> bool {
+        self.meshes.contains_key(&pos)
+    }
+
+    /// Téléverse (ou remplace) le maillage GPU d'un chunk.
+    pub fn upload_chunk(&mut self, pos: ChunkPos, mesh: &ChunkMesh, aabb: Aabb) {
         let vertex_buffer = self.gpu.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("chunk-vertices"),
             contents: bytemuck::cast_slice(&mesh.vertices),
@@ -89,7 +94,16 @@ impl Renderer {
             contents: bytemuck::cast_slice(&mesh.indices),
             usage: wgpu::BufferUsages::INDEX,
         });
-        GpuMesh { vertex_buffer, index_buffer, index_count: mesh.index_count(), aabb }
+        self.meshes.insert(pos, GpuMesh { vertex_buffer, index_buffer, index_count: mesh.index_count(), aabb });
+    }
+
+    /// Retire un chunk du GPU (déchargement par distance).
+    pub fn remove_chunk(&mut self, pos: ChunkPos) {
+        self.meshes.remove(&pos);
+    }
+
+    pub fn loaded_count(&self) -> usize {
+        self.meshes.len()
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {
@@ -97,20 +111,16 @@ impl Renderer {
         self.camera.aspect = self.gpu.aspect();
     }
 
-    /// Pousse l'état caméra courant dans son uniform buffer.
-    pub fn update_camera(&mut self) {
-        self.gpu.queue.write_buffer(
-            &self.camera_buffer,
-            0,
-            bytemuck::bytes_of(&self.camera.uniform()),
-        );
-    }
-
     pub fn camera_mut(&mut self) -> &mut Camera {
         &mut self.camera
     }
 
-    /// Dessine une frame complète du terrain visible.
+    /// Pousse l'état caméra courant dans son uniform buffer.
+    fn update_camera(&mut self) {
+        self.gpu.queue.write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&self.camera.uniform()));
+    }
+
+    /// Dessine une frame complète du terrain visible (frustum-cullé).
     pub fn render(&mut self) {
         self.update_camera();
         let frame = match self.gpu.surface.get_current_texture() {
@@ -142,16 +152,13 @@ impl Renderer {
                 resolve_target: None,
                 depth_slice: None,
                 ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color { r: 0.52, g: 0.70, b: 0.92, a: 1.0 }),
+                    load: wgpu::LoadOp::Clear(wgpu::Color { r: 0.62, g: 0.74, b: 0.92, a: 1.0 }),
                     store: wgpu::StoreOp::Store,
                 },
             })],
             depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                 view: &self.gpu.depth_view,
-                depth_ops: Some(wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(1.0),
-                    store: wgpu::StoreOp::Store,
-                }),
+                depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Store }),
                 stencil_ops: None,
             }),
             timestamp_writes: None,
@@ -160,7 +167,8 @@ impl Renderer {
         });
         pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, &self.camera_bind_group, &[]);
-        for mesh in &self.meshes {
+        pass.set_bind_group(1, &self.texture_bind_group, &[]);
+        for mesh in self.meshes.values() {
             if !frustum.intersects_aabb(&mesh.aabb) {
                 continue;
             }

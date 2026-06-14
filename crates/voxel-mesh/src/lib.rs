@@ -1,8 +1,8 @@
-//! voxel-mesh — conversion grille logique → géométrie GPU.
-//! Phase 00 : face-culling LOD0. Phases suivantes : greedy/binary meshing, agrégation LOD.
+//! voxel-mesh — conversion grille logique → géométrie GPU par greedy meshing,
+//! avec UV de tiling, teinte de biome et index de texture par face.
 
-pub mod cull;
+pub mod greedy;
 pub mod vertex;
 
-pub use cull::mesh_chunk;
+pub use greedy::mesh_chunk;
 pub use vertex::{ChunkMesh, Vertex};

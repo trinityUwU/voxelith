@@ -3,13 +3,15 @@
 
 use bytemuck::{Pod, Zeroable};
 
-/// Vertex de terrain : position monde, normale de face, couleur de bloc.
+/// Vertex de terrain : position monde, normale, UV (tiling en blocs), teinte, layer.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct Vertex {
     pub position: [f32; 3],
     pub normal: [f32; 3],
-    pub color: [f32; 3],
+    pub uv: [f32; 2],
+    pub tint: [f32; 3],
+    pub layer: u32,
 }
 
 /// Maillage CPU d'un chunk : tampons prêts à être copiés en vertex/index buffers.

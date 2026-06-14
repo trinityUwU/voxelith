@@ -7,6 +7,7 @@ pub mod frustum;
 pub mod gpu;
 pub mod pipeline;
 pub mod renderer;
+pub mod texture;
 
 pub use camera::Camera;
 pub use renderer::Renderer;

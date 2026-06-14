@@ -4,6 +4,17 @@
 
 ## Où on en est
 
+**Batch « monde infini » — livré.** Streaming async + worldgen multi-noise + biomes + greedy meshing + textures procédurales. Validé en run release : ~1000 chunks streamés, zéro crash.
+
+- **Streaming infini** (`app/src/stream.rs`) : `ChunkManager` charge/décharge les chunks autour du joueur, génération + greedy meshing sur thread pool **rayon**, résultats collectés par le main thread via channel crossbeam. Plus de bordure fixe. View distance 16 chunks, budget 8 uploads/frame.
+- **Worldgen multi-noise** (`voxel-world/src/worldgen.rs`) : FBM Perlin (crate `noise`), heightmap via splines continentalness + erosion + peaks/valleys, sea level 62. Déterministe → le mesher sonde les voisins cross-chunk via `block_at`.
+- **Biomes** (`biome.rs`) : sélection multi-noise temperature/humidity (plains, forest, savanna, desert, snowy, taiga), surface/filler + teinte d'herbe par biome.
+- **Greedy meshing** (`voxel-mesh/src/greedy.rs`) : fusion des faces coplanaires, UV de tiling + teinte + index de texture par face.
+- **Textures** (`voxel-render/src/texture.rs`) : texture array 16×16 procédural (10 layers), souverain/zéro asset externe. Fog de distance dans le shader pour fermer l'horizon.
+
+### Historique
+
+
 **Phase 00 (socle) — livrée et validée visuellement** (fenêtre ouverte, terrain à l'écran, Chris a confirmé).
 
 **Phase 01a (culling CPU) — livrée.** Trois améliorations sur la render distance :
@@ -27,12 +38,12 @@ Rust 1.96 · wgpu 29 · winit 0.30 · glam 0.33 · bytemuck · rayon · pollster
 
 ## Prochaine étape
 
-Phase 01b : `multi_draw_indirect` GPU-driven — upload des AABB dans un buffer persistant, compute shader de frustum culling, compaction du buffer de draw. Le CPU cesse de piloter la liste de draw.
+Candidats : caves 3D (density function noise 3D seuillé), arbres/structures, `multi_draw_indirect` GPU-driven (cull sur GPU au lieu du CPU), occlusion Hi-Z. À arbitrer avec Chris.
 
 ## Points ouverts
 
-- Cull frustum encore côté CPU (1 `draw_indexed` par chunk visible) — à déplacer sur GPU en phase 01b.
-- Pas encore de greedy meshing : faces individuelles (face-culling). Vertex count élevé vs greedy.
-- Palette non bit-packée (forme dense `Vec<u16>`).
-- `block_at` fait 6 lookups HashMap par bloc plein au meshing — OK en synchrone one-shot, à revoir au streaming async (phase 05).
-- Pas de fog : les chunks lointains apparaissent net jusqu'à la far plane (4000). Fog = phase 04.
+- Cull frustum côté CPU (1 `draw_indexed` par chunk visible) — candidat à passer GPU-driven.
+- Pas de collision/édition : on ne conserve pas le voxel data après meshing (regénérable, déterministe). À ajouter pour le gameplay.
+- Pas d'occlusion culling (Hi-Z) : terrain dense souterrain encore dessiné s'il est dans le frustum.
+- Eau = bloc plein opaque pour l'instant (pas de transparence/blend).
+- Pas de caves : terrain plein sous la surface (worldgen 2D heightmap, pas encore de density 3D).

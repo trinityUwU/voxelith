@@ -3,11 +3,12 @@
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
 
-/// Uniform caméra : view-projection en row-major prêt pour le bind group.
+/// Uniform caméra : view-projection + position monde (pour le fog de distance).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct CameraUniform {
     pub view_proj: [[f32; 4]; 4],
+    pub camera_pos: [f32; 4],
 }
 
 /// Caméra perspective contrôlée par position + yaw/pitch.
@@ -51,6 +52,7 @@ impl Camera {
     pub fn uniform(&self) -> CameraUniform {
         CameraUniform {
             view_proj: self.view_proj().to_cols_array_2d(),
+            camera_pos: [self.position.x, self.position.y, self.position.z, 1.0],
         }
     }
 }

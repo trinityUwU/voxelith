@@ -1,14 +1,15 @@
 //! Responsabilité : construction du render pipeline terrain (shader, layouts,
-//! bind group caméra, depth test) — isolé du contexte GPU et du loop de rendu.
+//! bind groups caméra + texture array, depth test) — isolé du contexte GPU.
 
 use voxel_mesh::Vertex;
 
 use crate::gpu::DEPTH_FORMAT;
 
-const VERTEX_ATTRS: [wgpu::VertexAttribute; 3] =
-    wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x3];
+const VERTEX_ATTRS: [wgpu::VertexAttribute; 5] = wgpu::vertex_attr_array![
+    0 => Float32x3, 1 => Float32x3, 2 => Float32x2, 3 => Float32x3, 4 => Uint32
+];
 
-/// Layout du vertex buffer de terrain (position, normal, color).
+/// Layout du vertex buffer de terrain (position, normal, uv, tint, layer).
 fn vertex_layout() -> wgpu::VertexBufferLayout<'static> {
     wgpu::VertexBufferLayout {
         array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
@@ -17,13 +18,13 @@ fn vertex_layout() -> wgpu::VertexBufferLayout<'static> {
     }
 }
 
-/// Crée le bind group layout de la caméra (uniform unique, visible vertex stage).
+/// Bind group layout de la caméra (uniform unique, visible vertex + fragment).
 pub fn camera_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
     device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         label: Some("camera-bgl"),
         entries: &[wgpu::BindGroupLayoutEntry {
             binding: 0,
-            visibility: wgpu::ShaderStages::VERTEX,
+            visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
             ty: wgpu::BindingType::Buffer {
                 ty: wgpu::BufferBindingType::Uniform,
                 has_dynamic_offset: false,
@@ -34,21 +35,44 @@ pub fn camera_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout 
     })
 }
 
-/// Construit le render pipeline terrain LOD0.
+/// Bind group layout du texture array de blocs (texture D2Array + sampler).
+pub fn texture_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
+    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("texture-bgl"),
+        entries: &[
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    view_dimension: wgpu::TextureViewDimension::D2Array,
+                    multisampled: false,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                count: None,
+            },
+        ],
+    })
+}
+
+/// Construit le render pipeline terrain (back-face culling désactivé : quads greedy single-sided).
 pub fn build_pipeline(
     device: &wgpu::Device,
     format: wgpu::TextureFormat,
-    camera_bgl: &wgpu::BindGroupLayout,
+    layouts: (&wgpu::BindGroupLayout, &wgpu::BindGroupLayout),
 ) -> wgpu::RenderPipeline {
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("terrain-shader"),
-        source: wgpu::ShaderSource::Wgsl(
-            include_str!("../../../assets/shaders/terrain.wgsl").into(),
-        ),
+        source: wgpu::ShaderSource::Wgsl(include_str!("../../../assets/shaders/terrain.wgsl").into()),
     });
     let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("terrain-layout"),
-        bind_group_layouts: &[Some(camera_bgl)],
+        bind_group_layouts: &[Some(layouts.0), Some(layouts.1)],
         immediate_size: 0,
     });
 
@@ -73,7 +97,7 @@ pub fn build_pipeline(
         }),
         primitive: wgpu::PrimitiveState {
             topology: wgpu::PrimitiveTopology::TriangleList,
-            cull_mode: Some(wgpu::Face::Back),
+            cull_mode: None,
             ..Default::default()
         },
         depth_stencil: Some(wgpu::DepthStencilState {
